@@ -1,0 +1,12 @@
+deap==1.0.2
+future==0.16.0
+gmpy==1.17
+numpy==1.13.1
+pandoc==1.0.0b2
+ply==3.10
+pyfst==0.2.3
+pypandoc==1.4
+redis==2.10.6
+requests==2.13.0
+scipy==0.19.1
+git+ssh://git@github.com:taucompling/fado-python3.git
