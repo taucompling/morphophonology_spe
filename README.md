@@ -13,7 +13,7 @@
 ` $ sudo docker build . -t tau-compling/morphophonology_spe:latest -f ./docker/Dockerfile `
 
 4. Start the Docker container
-`$ docker run -i -t -v ~/logs/:/root/morphophonology_spe/logs/`
+`$ docker run -i -t -v ~/logs/:/root/morphophonology_spe/logs/ taucompling/morphophonology_spe:latest`
 
 Parameters explained: 
 * `-i` - Interactive shell
