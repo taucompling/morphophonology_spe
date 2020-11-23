@@ -42,6 +42,9 @@ with open('ga_config.py') as f:
 segment_table_fixture_path = join(segment_table_dir_path, current_simulation.segment_table_file_name)
 SegmentTable.load(segment_table_fixture_path)
 dummy_queue = Queue(maxsize=10)
-genetic_algorithm = GeneticAlgorithm(current_simulation, migration_coordinator=None, result_queue=dummy_queue,
-                                     island_number=1, simulation_total_islands=1)
+
+MAX_GENERATIONS = 10
+
+genetic_algorithm = GeneticAlgorithm(current_simulation, migration_coordinator=None,result_queue=dummy_queue, island_number=1, simulation_total_islands=1, max_generations=MAX_GENERATIONS, simulation_total_generations=100, initial_generation=1)
+
 genetic_algorithm.run()

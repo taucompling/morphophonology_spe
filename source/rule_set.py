@@ -5,28 +5,38 @@ from configuration import Configuration
 from random import random, choice, randrange, randint
 from util import get_weighted_list, get_transducer_outputs, safe_compose, pickle_deepcopy as deepcopy
 from segment_table import SegmentTable
-from math import ceil, log
-from tests.test_util import write_to_dot_to_file as dot
+from math import log
+from tests.test_util import write_to_dot_file as dot
 from rule import Rule
-from rule import INSERTION, DELETION
+from rule import INSERTION
 import ga_config
+from uniform_encoding import UniformEncoding
 
 configurations = Configuration()
+uniform_encoding = UniformEncoding()
 
 rule_set_transducers = dict()
 
 
 class RuleSet:
-    def __init__(self, rules=[]):
+    def __init__(self, rules=None):
+        if not rules:
+            rules = []
         self.rules = rules
+
         number_of_features = len(SegmentTable().features)
-        self.rule_symbol_length = ceil(log(number_of_features + 6, 2))  # + 6 for 3 delimiters (feature, bundle,
-        # rule part), plus sign and minus sign, and Kleene star
+        number_of_encoding_symbols = number_of_features + 5  # +5 for 3 delimiters (feature, bundle, # rule part), plus sign, and minus sign
+        if configurations['WORD_BOUNDARY_FLAG']:
+            number_of_encoding_symbols += 1
+        if configurations['MORPHEME_BOUNDARY_FLAG']:
+            number_of_encoding_symbols += 1
+        if configurations['CHANGE_KLEENE_VALUE']:
+            number_of_encoding_symbols += 1
+        self.rule_symbol_length = uniform_encoding.log2(number_of_encoding_symbols)
 
     @staticmethod
     def clear_caching():
-        global rule_set_transducers
-        rule_set_transducers = dict()
+        rule_set_transducers.clear()
 
     def get_transducer(self):
         rule_set_key = " ".join([str(rule) for rule in self.rules if rule.get_generation_validity()])
@@ -49,6 +59,9 @@ class RuleSet:
                 rule_transducer.arc_sort_input()
                 transducer.arc_sort_input()
                 transducer >>= rule_transducer
+            #if configurations["CYCLICITY"]:
+                #TODO
+                #pass
 
         return transducer
 
@@ -62,7 +75,7 @@ class RuleSet:
             return cls(rules)
 
     @classmethod
-    def load_form_flat_list(cls, flat_rule_set_list):
+    def load_from_flat_list(cls, flat_rule_set_list):
         rules = []
         for flat_rule in flat_rule_set_list:
             rules.append(Rule(*flat_rule))
@@ -156,16 +169,39 @@ class RuleSet:
 
     @classmethod
     def crossover(cls, rules_set_1, rules_set_2):
-        if ga_config.RULE_SET_CROSSOVER == 'uniform':
-            offspring_1, offspring_2 = RuleSet.crossover_uniform(rules_set_1, rules_set_2)
-        elif ga_config.RULE_SET_CROSSOVER == 'pivot':
+        if configurations["RULE_SET_CROSSOVER_METHOD"] == 'unilateral':
+            offspring_1, offspring_2 = RuleSet.crossover_unilateral(rules_set_1, rules_set_2)
+        elif configurations["RULE_SET_CROSSOVER_METHOD"] == 'switch_pairs':
+            offspring_1, offspring_2 = RuleSet.crossover_switch_pairs(rules_set_1, rules_set_2)
+        elif configurations["RULE_SET_CROSSOVER_METHOD"] == 'pivot':
             offspring_1, offspring_2 = RuleSet.crossover_pivot(rules_set_1, rules_set_2)
         else:
-            raise ValueError("Unknown rule set crossover {}".format(ga_config.RULE_SET_CROSSOVER))
+            raise ValueError("Unknown rule set crossover {}".format(configurations["RULE_SET_CROSSOVER_METHOD"]))
         return offspring_1, offspring_2
 
     @classmethod
-    def crossover_uniform(cls, rules_set_1, rules_set_2):
+    def crossover_unilateral(cls, rule_set_1, rule_set_2):
+        """ Uniformly select rules from rule set 2, add them to rule set 1 at their original index in set 2"""
+
+        num_rules_in_source = len(rule_set_2.rules)
+        if num_rules_in_source == 0 or len(rule_set_1.rules) == configurations["MAX_NUMBER_OF_RULES"]:
+            return rule_set_1, rule_set_2
+
+        offspring_1 = deepcopy(rule_set_1)
+        offspring_2 = deepcopy(rule_set_2)
+
+        transition_probab = 1 / max(1, log(num_rules_in_source, 2))
+        for source_rule_idx, source_rule in enumerate(rule_set_2.rules):
+            if len(offspring_1.rules) == configurations["MAX_NUMBER_OF_RULES"]:
+                break
+
+            if random() < transition_probab:
+                offspring_1.rules.insert(source_rule_idx, source_rule)
+
+        return offspring_1, offspring_2
+
+    @classmethod
+    def crossover_switch_pairs(cls, rules_set_1, rules_set_2):
         """
         For each rule pair r1, r2 in parent rule-sets A, B, select whether to switch between r1, r2.
         If one rule-set has more rules than the other, rules can be moved instead of switching.
@@ -214,6 +250,7 @@ class RuleSet:
             offspring_1_rule_set = RuleSet(rules_2)
             offspring_2_rule_set = RuleSet(rules_1)
         else:
+            # TODO Randomize crossover locus
             rule_offspring_1 = Rule(target=crossover_rule_1.target_feature_bundle_list,
                                     change=crossover_rule_1.change_feature_bundle_list,
                                     left_context=crossover_rule_2.left_context_feature_bundle_list,
@@ -320,7 +357,7 @@ class RuleSet:
         word_transducer = get_transducer_acceptor(word)
         rule_set_transducer = self.get_transducer()
         if rule_set_transducer:
-            dot(word_transducer, "word_transducer")
+            # dot(word_transducer, "word_transducer")
             dot(rule_set_transducer, "rule_set_transducer")
             word_rule_set_transducer = safe_compose(word_transducer, rule_set_transducer)
             word_rule_set_transducer.remove_epsilon()
@@ -361,8 +398,11 @@ class RuleSet:
             rules.append(rule)
         return RuleSet(rules)
 
-    def __repr__(self):
+    def __str__(self):
         return str(self.rules)
+
+    def __repr__(self):
+        return repr(self.rules)
 
     def is_safe_to_print_parse(self):
         for rule in self.rules:

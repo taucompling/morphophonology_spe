@@ -1,9 +1,14 @@
+import random
 import unittest
 from os.path import join, split, abspath
-from segment_table import SegmentTable
+from unittest.mock import ANY
 
+from bracket_rule_transducer import clear_module
+from segment_table import SegmentTable
 from rule_set import RuleSet
-from tests.test_util import write_to_dot_to_file, get_hypothesis_from_log_string
+from uniform_encoding import UniformEncoding
+from utils.cache import Cache
+from tests.test_util import write_to_dot_file, get_hypothesis_from_log_string
 
 tests_dir_path, filename = split(abspath(__file__))
 fixtures_dir_path = join(tests_dir_path, "fixtures")
@@ -16,9 +21,24 @@ configurations = Configuration()
 
 
 class MyTestCase(unittest.TestCase):
+    def setUp(self):
+        self.config_default = False
+        configurations.configurations_dict.setdefault("TRANSDUCER_STATES_LIMIT", 5000)
+        configurations.configurations_dict.setdefault("DFAS_STATES_LIMIT", 1000)
+        configurations.configurations_dict.setdefault("HMM_MAX_CROSSOVERS", 1)
+        configurations.configurations_dict.setdefault("HMM_CROSSOVER_METHOD", "emissions")
+        configurations.configurations_dict.setdefault("RANDOM_HMM_METHOD", "simple")
+        configurations.configurations_dict.setdefault("DATA_ENCODING_LENGTH_MULTIPLIER", 1)
+        configurations.configurations_dict.setdefault("HMM_ENCODING_LENGTH_MULTIPLIER", 1)
+        configurations.configurations_dict.setdefault("RULES_SET_ENCODING_LENGTH_MULTIPLIER", 1)
+        self.configurations = configurations
+        self.p_configurations_get_item = Configuration.__getitem__
+        self.patch_configurations()
+
     def initialise_simulation(self, simulation):
-        configurations = Configuration()
-        configurations.load_configuration_for_simulation(simulation)
+        self.simulation = simulation
+        Cache.get_cache().flush()
+        Configuration().load_configuration_for_simulation(simulation)
 
         segment_table_fixture_path = join(segment_table_dir_path, simulation.segment_table_file_name)
         SegmentTable.load(segment_table_fixture_path)
@@ -35,8 +55,39 @@ class MyTestCase(unittest.TestCase):
         rule_set = RuleSet.load(rule_set_file_name)
         return rule_set
 
-    def write_to_dot_to_file(self, dotable_object, file_name):
-        write_to_dot_to_file(dotable_object, file_name)
+    def write_to_dot_file(self, dotable_object, file_name):
+        write_to_dot_file(dotable_object, file_name)
+
+    def patch_configurations(self):
+        Configuration.__getitem__ = lambda zelf, x: Configuration.get(
+            zelf, x, self.config_default
+        )
 
     def tearDown(self):
+        self.tear_down_configurations()
+        SegmentTable.clear()
+        UniformEncoding().clear()
+        clear_module()
+
+    def tear_down_configurations(self):
         configurations.reset_to_original_configurations()
+        configurations.clear()
+        if hasattr(self, 'p_configurations_get_item'):
+            Configuration.__getitem__ = self.p_configurations_get_item
+        self.config_default = False
+
+    def _seed_me_multiple(self, methods, argss, expecteds):
+        seed = -1
+        while True:
+            seed += 1
+            random.seed(seed)
+            for method, args, expected in zip(methods, argss, expecteds):
+                if method(*args) != expected:
+                    break
+            else:
+                break
+        print(f"SEEDING: {seed}")
+        random.seed(seed)
+
+    def _seed_me(self, method, args, expected):
+        return self._seed_me_multiple([method], [args], [expected])

@@ -1,16 +1,24 @@
-from math import ceil, log
+from collections import defaultdict
+
 from fst import TropicalWeight, linear_chain, EPSILON
+from math import ceil, log
+
 from configuration import Singleton
 from segment_table import MORPHEME_BOUNDARY, WORD_BOUNDARY
 from configuration import Configuration
 
+
+CEIL_LOG2 = False
 configurations = Configuration()
 
 
 class UniformEncoding(metaclass=Singleton):
     def __init__(self):
         self._word_acceptors_cache = {}
-        self.logarithms_cache = {x: ceil(log(x, 2)) if x > 0 else 0 for x in range(100)}
+        self.logarithms_cache = {x: self._log2(x) if x > 0 else 0 for x in range(100)}
+
+    def clear(self):
+        self._word_acceptors_cache.clear()
 
     def get_acceptor_for_word(self, word, syms):
         try:
@@ -20,27 +28,79 @@ class UniformEncoding(metaclass=Singleton):
             self._word_acceptors_cache[word] = acceptor
             return acceptor
 
+    def _log2(self, n):
+        log_n = log(n, 2)
+        if CEIL_LOG2:
+            return ceil(log_n)
+        else:
+            return log_n
+
+    def log2(self, n):
+        if n not in self.logarithms_cache:
+            self.logarithms_cache[n] = self._log2(n)
+        return self.logarithms_cache[n]
+
     def get_weighted_transducer(self, transducer):
         for state in transducer:
+            # TODO (@itamar): we might want to consider using:
+            # `num_neighbours = len(set(arc.nextstate for arc in state.arcs))`
             num_neighbours = len(list(state.arcs))
-            try:
-                num_bits = self.logarithms_cache[num_neighbours]
-            except KeyError:
-                num_bits = ceil(log(num_neighbours, 2))
+            num_bits = self.log2(num_neighbours)
             for arc in state:
                 arc.weight = TropicalWeight(num_bits)
         return transducer
 
+    def get_weighted_replace_transducer(self, transducer):
+        return self._get_weighted_transducer(transducer, count_epsilons=False)
+
+    def get_weighted_rule_transducer(self, transducer, is_optional_insertion):
+        return self._get_weighted_transducer(transducer,
+                                             count_epsilons=is_optional_insertion)
+
+    def _get_weighted_transducer(self, transducer, count_epsilons):
+        epsilon_ilabel = transducer.isyms[EPSILON]
+        for state in transducer:
+            arcs = defaultdict(int)
+            epsilon_transitions = 0
+            for arc in state:
+                # count the number of transitions with same input
+                arcs[arc.ilabel] += 1
+
+                # an epsilon transition in an optional-insertion-rule should
+                # cost as one binary choice
+                if count_epsilons and arc.ilabel == epsilon_ilabel:
+                    epsilon_transitions += 1
+            for arc in state:
+                total_inputs = arcs[arc.ilabel]
+                if count_epsilons:
+                    if arc.ilabel == epsilon_ilabel:
+                        # epsilon transition is always considered as one binary
+                        # choice (if it is an optional insertion rule)
+                        total_inputs += 1
+                    else:
+                        total_inputs += epsilon_transitions
+
+                if total_inputs not in self.logarithms_cache:
+                    self.logarithms_cache[total_inputs] = self.log2(total_inputs)
+                # transitions with the same input are a non-deterministic choice
+                # the number of choices is reflected in the weight
+                arc.weight = TropicalWeight(self.logarithms_cache[total_inputs])
+        return transducer
+
     def replace_morpheme_boundary_with_epsilons(self, transducer):
-        transducer.relabel(imap={MORPHEME_BOUNDARY: EPSILON}, omap={MORPHEME_BOUNDARY: EPSILON})
+        transducer.relabel(
+            imap={MORPHEME_BOUNDARY: EPSILON}, omap={MORPHEME_BOUNDARY: EPSILON}
+        )
 
     def get_shortest_encoding_length_fst(self, weighted_transducer, word):
         if configurations["WORD_BOUNDARY_FLAG"]:
             word += WORD_BOUNDARY
 
         acceptor = self.get_acceptor_for_word(word, syms=weighted_transducer.isyms)
-        composed = weighted_transducer.compose(acceptor)  # composition result is: acceptor(weighted_transducer())
-        if len(composed) == 0:  # word can't be parsed by transducer
+        # composition result is: acceptor(weighted_transducer())
+        composed = weighted_transducer.compose(acceptor)
+        # word can't be parsed by transducer
+        if len(composed) == 0:
             return float("INF")
 
         shortest_distances = composed.shortest_distance(reverse=True)
@@ -48,15 +108,15 @@ class UniformEncoding(metaclass=Singleton):
             return float(shortest_distances[0])
         return float("INF")
 
-    @staticmethod
-    def get_encoding_length(nfa, parse_path):
+    def get_encoding_length(self, nfa, parse_path):
         total_bits = 0
         for state in parse_path[:-1]:
-            bits_for_transition = ceil(log(len(nfa.probabilities[state]), 2))
+            bits_for_transition = self.log2(len(nfa.probabilities[state]))
             total_bits += bits_for_transition
         return total_bits
 
-    @staticmethod
-    def get_shortest_encoding_length(nfa, parse_paths):
-        paths_encoding_lengths = [UniformEncoding.get_encoding_length(nfa, path) for path in parse_paths]
+    def get_shortest_encoding_length(self, nfa, parse_paths):
+        paths_encoding_lengths = [
+            self.get_encoding_length(nfa, path) for path in parse_paths
+        ]
         return min(paths_encoding_lengths)

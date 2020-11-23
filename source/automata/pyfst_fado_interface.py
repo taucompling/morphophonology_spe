@@ -1,7 +1,7 @@
 
 import fst
 from segment_table import SegmentTable
-from tests.test_util import write_to_dot_to_file as dot
+from tests.test_util import write_to_dot_file as dot
 import FAdo
 import re
 from FAdo.fa import NFA

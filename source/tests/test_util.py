@@ -8,7 +8,7 @@ fixtures_dir_path = join(tests_dir_path, "fixtures")
 dot_files_folder_path = join(tests_dir_path, "dot_files")
 
 
-def write_to_dot_to_file(dotable_object, file_name):
+def write_to_dot_file(dotable_object, file_name):
     path, file = split(file_name)
     new_path = join(dot_files_folder_path, path)
     if not os.path.exists(new_path):
@@ -18,9 +18,11 @@ def write_to_dot_to_file(dotable_object, file_name):
     else:
         draw_string = dotable_object.draw()
     try:
-        open(join(dot_files_folder_path, file_name + ".dot"), "w").write(draw_string)
+        with open(join(dot_files_folder_path, file_name + ".dot"), "w") as f:
+            f.write(draw_string)
     except TypeError:
-        open(join(dot_files_folder_path, file_name + ".dot"), "wb").write(draw_string)
+        with open(join(dot_files_folder_path, file_name + ".dot"), "wb") as f:
+            f.write(draw_string)
 
 
 def get_hypothesis_from_log_string(hypothesis_string):
@@ -63,17 +65,22 @@ def get_hmm_from_hypothesis_string(s):
 def get_rule_set_from_hypothesis_string(s):
     from rule import Rule
     from rule_set import RuleSet
-    rule_regex = re.compile(r'Rule\((\[.*?((True)|(False)))\)')
+    rule_regex = re.compile(r'\[(.*?)\]\s*-->\s*\[(.*?)\]\s*/\s*\[(.*?)\]__\[(.*?)\].*(True|False)')
     rules_matches = rule_regex.findall(s)
     rule_set_list = []
 
-    for match in rules_matches:
-        rule_str = match[0]
-        rule_str = rule_str.replace("'", '"')
-        rule_str = rule_str.replace("True", 'true')
-        rule_str = rule_str.replace("False", 'false')
-        rule_str = "[{}]".format(rule_str)
-        rule_list = json.loads(rule_str)
+    for match_groups in rules_matches:
+        target = match_groups[0]
+        change = match_groups[1]
+        left_context = match_groups[2]
+        right_context = match_groups[3]
+        obligatory = match_groups[4]
+        rule_json_str = f'[[{target}], [{change}], [{left_context}], [{right_context}], {obligatory}]'
+        rule_json_str = rule_json_str.replace("'", '"')
+        rule_json_str = rule_json_str.replace("True", 'true')
+        rule_json_str = rule_json_str.replace("False", 'false')
+
+        rule_list = json.loads(rule_json_str)
         rule_obj = Rule(*rule_list)
         rule_set_list.append(rule_obj)
 

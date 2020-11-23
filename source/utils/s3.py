@@ -1,7 +1,10 @@
-from io import BytesIO
 from os import getenv
 import boto3
 from botocore.errorfactory import ClientError
+
+
+MAX_RETRIES = 5
+SLEEP_TIMEOUT_SEC = 5
 
 
 class S3:

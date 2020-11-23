@@ -6,6 +6,7 @@ import time
 import re
 from collections import deque
 import platform
+from utils.slack import Slack
 from configuration import Configuration
 
 from rule_set import RuleSet
@@ -132,6 +133,7 @@ class SimulatedAnnealing(object):
         self._log_hypothesis_state()
         msg = "simulated annealing runtime was: {}".format(_pretty_runtime_str(current_time - self.start_time))
         logger.info(msg)
+        Slack.send('{server} Simulation done: {msg}'.format(server=platform.node(), msg=msg))
 
 
     def _debug_interval(self):
@@ -168,8 +170,6 @@ class SimulatedAnnealing(object):
         for line in self.current_hypothesis.grammar.rule_set.get_log_lines():
             logger.info(line)
         logger.info(self.current_hypothesis.get_recent_energy_signature())
-        # if configurations["PRINT_PARSE"]:
-        #     logger.info("Parse: {}".format(self._get_parsing_results()))
         if self.target_energy:
             energy_delta = self.current_hypothesis.energy - self.target_energy
             logger.info("Distance from target energy({:,}): {:,}".format(self.target_energy, energy_delta))

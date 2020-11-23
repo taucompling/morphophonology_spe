@@ -2,10 +2,6 @@ from os import getenv
 from multiprocessing import current_process
 
 
-def get_simulation_name():
-    return get_mandatory_envar('SPE_SIMULATION_NAME')
-
-
 def get_simulation_id():
     return get_mandatory_envar('SPE_SIMULATION_ID')
 
@@ -18,7 +14,7 @@ def get_mandatory_envar(var_name):
 
 
 def get_environment_name():
-    return getenv("SPE_ENVIRONMENT_NAME", '').lower()
+    return getenv("SPE_ENVIRONMENT_NAME", 'local').lower()
 
 
 def get_process_number():

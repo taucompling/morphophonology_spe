@@ -34,7 +34,7 @@ class TestParser(MyTestCase):
 
         nfa = grammar.get_nfa()
 
-        self.write_to_dot_to_file(nfa, "test_parser_nfa")
+        self.write_to_dot_file(nfa, "test_parser_nfa")
 
     def test_uniform_encoding_length(self):
         hmm_multiple_paths = HMM({INITIAL_STATE: ['q1', 'q3'],
@@ -49,7 +49,7 @@ class TestParser(MyTestCase):
         print(output)
 
         nfa = grammar.get_nfa()
-        self.write_to_dot_to_file(nfa, "test_parser_nfa")
+        self.write_to_dot_file(nfa, "test_parser_nfa")
         encoding_length = get_encoding_length(nfa, parse_path)
         print(encoding_length)
         assert(encoding_length == 4.0)
@@ -74,18 +74,18 @@ class TestParser(MyTestCase):
 
     def test_parse_uniform_encoding(self):
         hmm_multiple_paths = HMM({INITIAL_STATE: ['q1', 'q3'],
-                                  'q1': (['q2', FINAL_STATE], ['dog', 'kat', 'kats', 'dogz']),
+                                  'q1': (['q1','q2', 'q3', FINAL_STATE], ['d', 'k', 'a', 'o', 'g']),
                                   'q2': ([FINAL_STATE], ['z']),
-                                  'q3': (['q3', FINAL_STATE], self.plural_english_segments)})
+                                  'q3': (['q3', FINAL_STATE], ['z'])})
 
         grammar = Grammar(hmm_multiple_paths, None)
         # hypothesis = Hypothesis(grammar, ['kats'])
         nfa = grammar.get_nfa()
         transducer = grammar.get_transducer()
-        self.write_to_dot_to_file(nfa, "test_parser_nfa_uniform_encoding")
+        self.write_to_dot_file(nfa, "test_parser_nfa_uniform_encoding")
         parse_paths = nfa_parser_get_all_parses(nfa, 'dogz')
         print(parse_paths)
-        print(parse_paths[2], get_encoding_length(nfa, parse_paths[2]))
+        #print(parse_paths[2], get_encoding_length(nfa, parse_paths[2]))
         print(get_shortest_encoding_length(nfa, parse_paths))
 
         assert(len(parse_paths) == 3)
@@ -97,7 +97,7 @@ class TestParser(MyTestCase):
                    'q2': ([FINAL_STATE], ['o'])})
 
         hmm_transducer = hmm.get_transducer()
-        self.write_to_dot_to_file(hmm_transducer, "test_hmm_transducer_kleene")
+        self.write_to_dot_file(hmm_transducer, "test_hmm_transducer_kleene")
 
         assimilation_rule_with_kleene = Rule([{"cons": "-"}], [{"low": "+"}],
                                              [{"cons": "-"}, {"cons": "+", "kleene": True}], [],
@@ -107,7 +107,7 @@ class TestParser(MyTestCase):
         grammar = Grammar(hmm, rule_set_with_kleene)
 
         nfa = grammar.get_nfa()
-        self.write_to_dot_to_file(nfa, "test_parser_nfa_kleene")
+        self.write_to_dot_file(nfa, "test_parser_nfa_kleene")
 
     def test_parser2(self):
         hmm = HMM({INITIAL_STATE: ['q1'],

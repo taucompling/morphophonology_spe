@@ -14,7 +14,7 @@ class TestFado(MyTestCase):
 
     def test_dfa(self):
         r2 = str2regexp("(k+s+t)(Y)*", no_table=0).toDFA()
-        self.write_to_dot_to_file(r2, "r2")
+        self.write_to_dot_file(r2, "r2")
 
 
 

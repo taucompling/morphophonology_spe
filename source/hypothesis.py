@@ -2,6 +2,7 @@ import pickle
 import random
 from deap import base
 from math import isinf
+from util import DFATooLargeException
 from hmm import HMM
 from grammar import Grammar
 from parser import nfa_parser_get_most_probable_parse
@@ -31,21 +32,29 @@ class Hypothesis:
         self.fitness = HypothesisFitness()
 
     def get_energy(self):
-        if not self.energy:
-            data_encoding_length_by_grammar = configurations[
-                                                  "DATA_ENCODING_LENGTH_MULTIPLIER"] * self.get_data_encoding_length_by_grammar()
-            hmm_encoding_length, rules_encoding_length = self.grammar.get_encoding_length()
-            hmm_encoding_length = configurations["HMM_ENCODING_LENGTH_MULTIPLIER"] * hmm_encoding_length
-            rules_encoding_length = configurations["RULES_SET_ENCODING_LENGTH_MULTIPLIER"] * rules_encoding_length
-            grammar_encoding_length = hmm_encoding_length + rules_encoding_length
-            energy = data_encoding_length_by_grammar + grammar_encoding_length
-            self.energy_signature = "Energy: {:,} (data_by_grammar: {:,}, " \
-                                    "hmm: {:,}, rule_set: {:,})".format(energy, data_encoding_length_by_grammar,
-                                                                        hmm_encoding_length, rules_encoding_length)
-            self.energy = energy
+        if self.energy is None:
+            self._calculate_energy()
         return self.energy
 
+    def _calculate_energy(self):
+        data_encoding_length_by_grammar = configurations[
+                                              "DATA_ENCODING_LENGTH_MULTIPLIER"] * self.get_data_encoding_length_by_grammar()
+        hmm_encoding_length, rules_encoding_length = self.grammar.get_encoding_length()
+        hmm_encoding_length = configurations["HMM_ENCODING_LENGTH_MULTIPLIER"] * hmm_encoding_length
+        rules_encoding_length = configurations["RULES_SET_ENCODING_LENGTH_MULTIPLIER"] * rules_encoding_length
+        grammar_encoding_length = hmm_encoding_length + rules_encoding_length
+        energy = data_encoding_length_by_grammar + grammar_encoding_length
+        self.energy_signature = "Energy: {:,.2f} (data_by_grammar: {:,.2f}, " \
+                                "hmm: {:,.2f}, rule_set: {:,.2f})".format(energy, data_encoding_length_by_grammar,
+                                                                    hmm_encoding_length, rules_encoding_length)
+        self.energy = energy
+
+    def set_energy(self, energy):
+        self.energy = energy
+
     def get_recent_energy_signature(self):
+        if not self.energy_signature:
+            self._calculate_energy()
         return self.energy_signature
 
     def get_data_encoding_length_by_grammar(self):
@@ -80,24 +89,44 @@ class Hypothesis:
         """ Use FST operators on grammar transducer to calculate encoding length """
         data_by_grammar_length = 0
         num_unparsed_words = 0
-        transducer = self.grammar.get_transducer()
 
-        num_states_in_transducer = len(transducer)
-        if num_states_in_transducer >= ga_config.LIMIT_TRANSDUCER_NUM_OF_STATES:
+        transducer_too_large = False
+        try:
+            transducer = self.grammar.get_transducer()
+
+            num_states_in_transducer = len(transducer)
+            if num_states_in_transducer >= configurations["TRANSDUCER_STATES_LIMIT"]:
+                transducer_too_large = True
+
+        except DFATooLargeException:
+            transducer_too_large = True
+
+        if transducer_too_large:
             num_unparsed_words = len(configurations.simulation_data)
             data_by_grammar_length = float("INF")
 
         else:
-            weighted_transducer = uniform_encoding.get_weighted_transducer(transducer)
+            if configurations["MINIMIZE_TRANSDUCER"]:
+                transducer = self.grammar.minimize_transducer(transducer)
+
+            weighted_transducer = transducer
             if configurations["MORPHEME_BOUNDARY_FLAG"]:
                 uniform_encoding.replace_morpheme_boundary_with_epsilons(weighted_transducer)
 
+            encoding_length_for_word = {}  # cache in case corpus contains duplicates
+
             for word in configurations.simulation_data:
-                word_encoding_length = uniform_encoding.get_shortest_encoding_length_fst(weighted_transducer, word)
+
+                if word in encoding_length_for_word:
+                    word_encoding_length = encoding_length_for_word[word]
+                else:
+                    word_encoding_length = uniform_encoding.get_shortest_encoding_length_fst(weighted_transducer, word)
+                    encoding_length_for_word[word] = word_encoding_length
 
                 if word_encoding_length == float("INF"):
                     num_unparsed_words += 1
 
+                # print('{},{}'.format(word, word_encoding_length))
                 data_by_grammar_length += word_encoding_length
 
         self.unparsed_words = num_unparsed_words
@@ -151,15 +180,14 @@ class Hypothesis:
             random_hypothesis = Hypothesis.get_random_hypothesis_by_mutations(data, initial_hmm, initial_rules)
         else:
             random_hypothesis = Hypothesis.get_random_hypothesis_randomized(simulation, data, initial_hmm, initial_rules)
-        random_hypothesis.get_energy()
         return random_hypothesis
 
     @classmethod
     def get_random_hypothesis_randomized(cls, simulation, data, initial_hmm=None, initial_rules=None):
         if initial_rules:
-            rule_set = RuleSet.load_form_flat_list(initial_rules)
+            rule_set = RuleSet.load_from_flat_list(initial_rules)
         elif not configurations['EVOLVE_RULES']:
-            rule_set = RuleSet.load_form_flat_list(deepcopy(simulation.target_tuple[1]))
+            rule_set = RuleSet.load_from_flat_list(deepcopy(simulation.target_tuple[1]))
         else:
             rule_set = RuleSet.get_random_rule_set()
 
@@ -178,7 +206,7 @@ class Hypothesis:
         if configurations["EVOLVE_RULES"]:
             initial_rule_set = RuleSet()
         elif fixed_rules:
-            initial_rule_set = RuleSet.load_form_flat_list(fixed_rules)
+            initial_rule_set = RuleSet.load_from_flat_list(fixed_rules)
         else:
             initial_rule_set = RuleSet()
 
@@ -216,6 +244,9 @@ class Hypothesis:
 
     def invalidate_fitness(self):
         del self.fitness.values
+
+    def __str__(self):
+        return '{} {}'.format(str(self.grammar.hmm), str(self.grammar.rule_set))
 
     def __repr__(self):
         return '{} {}'.format(repr(self.grammar.hmm), repr(self.grammar.rule_set))

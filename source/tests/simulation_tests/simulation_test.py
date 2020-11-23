@@ -27,8 +27,8 @@ class SimulationTest(MyTestCase):
                 rule_set_list.append(Rule(*flat_rule))
             rule_set = RuleSet(rule_set_list)
         grammar = Grammar(hmm, rule_set)
-        self.write_to_dot_to_file(hmm, "hmm_"+case_name)
-        self.write_to_dot_to_file(grammar.get_nfa(), "grammar_nfa_"+case_name)
+        self.write_to_dot_file(hmm, "hmm_" + case_name)
+        self.write_to_dot_file(grammar.get_nfa(), "grammar_nfa_" + case_name)
         hypothesis = Hypothesis(grammar, self.data)
         energy = hypothesis.get_energy()
         if self.target_energy:

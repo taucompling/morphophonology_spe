@@ -22,7 +22,7 @@ DELETION = "DELETION"
 INSERTION = "INSERTION"
 DEGENERATE = "DEGENERATE"
 
-cache = Cache()
+cache = Cache.get_cache()
 
 
 class Rule:
@@ -175,7 +175,8 @@ class Rule:
                             (self._mutate_change, configurations["MUTATE_CHANGE"]),
                             (self._mutate_left_context, configurations["MUTATE_LEFT_CONTEXT"]),
                             (self._mutate_right_context, configurations["MUTATE_RIGHT_CONTEXT"]),
-                            (self._mutate_obligatory, configurations["MUTATE_OBLIGATORY"])]
+                            (self._mutate_obligatory, configurations["MUTATE_OBLIGATORY"]),
+                            (self._switch_target_change, configurations["SWITCH_TARGET_CHANGE"])]
         weighted_mutation_function_list = get_weighted_list(mutation_weights)
         mutation_result = choice(weighted_mutation_function_list)()
         if mutation_result:
@@ -197,6 +198,13 @@ class Rule:
 
     def _mutate_obligatory(self):
         self.obligatory = not self.obligatory
+        return True
+
+    def _switch_target_change(self):
+        old_target = deepcopy(self.target_feature_bundle_list)
+        old_change = deepcopy(self.change_feature_bundle_list)
+        self.change_feature_bundle_list = old_target
+        self.target_feature_bundle_list = old_change
         return True
 
     def get_encoding_length(self, rule_symbol_length):
@@ -221,17 +229,26 @@ class Rule:
         random_rule = Rule(target, change, left_context, right_context, obligatory)
         return random_rule
 
+    def __str__(self):
+        if not self.repr:
+            return u"{} --> {}  /  {}__{} obligatory: {}".format(self.target_feature_bundle_list,
+                                                                 self.change_feature_bundle_list,
+                                                                 self.left_context_feature_bundle_list,
+                                                                 self.right_context_feature_bundle_list,
+                                                                 self.obligatory)
+        return self.repr
+
     def __repr__(self):
         if not self.repr:
-            self.repr = u"{} --> {}  /  {}__{} obligatory: {}".format(self.target_feature_bundle_list,
-                                                                      self.change_feature_bundle_list,
-                                                                      self.left_context_feature_bundle_list,
-                                                                      self.right_context_feature_bundle_list,
+            self.repr = u"{} --> {}  /  {}__{} obligatory: {}".format(repr(self.target_feature_bundle_list),
+                                                                      repr(self.change_feature_bundle_list),
+                                                                      repr(self.left_context_feature_bundle_list),
+                                                                      repr(self.right_context_feature_bundle_list),
                                                                       self.obligatory)
         return self.repr
 
     def get_construction_representation(self):
-        return "Rule({}, {}, {}, {}, {})".format(self.target_feature_bundle_list, self.change_feature_bundle_list,
+        return u"{} --> {}  /  {}__{} obligatory: {}".format(self.target_feature_bundle_list, self.change_feature_bundle_list,
                                                  self.left_context_feature_bundle_list,
                                                  self.right_context_feature_bundle_list, self.obligatory)
 

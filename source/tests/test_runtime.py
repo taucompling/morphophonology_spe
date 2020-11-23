@@ -21,7 +21,7 @@ class TestRuntime(MyTestCase):
         initial_hypothesis = Hypothesis.create_initial_hypothesis(current_simulation.data, initial_hmm, initial_rule_set)
         target_tuple = current_simulation.target_tuple
         data = current_simulation.data
-        target_rule_set = RuleSet.load_form_flat_list(target_tuple[1])
+        target_rule_set = RuleSet.load_from_flat_list(target_tuple[1])
         target_hypothesis = Hypothesis.create_hypothesis(HMM(target_tuple[0]), target_rule_set, data)
         target_energy = target_hypothesis.get_energy()
 

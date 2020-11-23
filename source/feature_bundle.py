@@ -31,7 +31,7 @@ class FeatureBundle:
                 self.morpheme_boundary = True
         else:
             for feature_name in feature_string_dict:
-                if feature_name is KLEENE_FEATURE_NAME:
+                if feature_name == KLEENE_FEATURE_NAME:
                     if self._is_context_bundle() and configurations['CHANGE_KLEENE_VALUE']:
                         self.kleene = feature_string_dict[feature_name]
                 else:
@@ -44,25 +44,25 @@ class FeatureBundle:
         self.feature_dict = feature_dict
 
     @classmethod
-    def get_random_feature_bundle(cls, role, boundary_position=False):
+    def get_random_feature_bundle(cls, role, is_boundary_position=False):
         """
         :param role: 'target', 'change', 'left_context', 'right_context'
-        :param boundary_position: whether feature bundle is first or last in left or right context, respectively
+        :param is_boundary_position: whether feature bundle is first or last in left or right context, respectively
         :return:
         """
         available_features = list(SegmentTable().features.keys())
-        if configurations['WORD_BOUNDARY_FLAG'] and FeatureBundle._is_context_role(role) and boundary_position:
+        if configurations['WORD_BOUNDARY_FLAG'] and FeatureBundle._is_context_role(role) and is_boundary_position:
             available_features.append(WORD_BOUNDARY_FEATURE_NAME)
-        if configurations['MORPHEME_BOUNDARY_FLAG'] and FeatureBundle._is_context_role(role) and boundary_position:
+        if configurations['MORPHEME_BOUNDARY_FLAG'] and FeatureBundle._is_context_role(role) and is_boundary_position:
             available_features.append(MORPHEME_BOUNDARY_FEATURE_NAME)
 
         feature_dict = {}
         random_feature = choice(available_features)
         if not isinstance(random_feature, Feature):
             if random_feature == WORD_BOUNDARY_FEATURE_NAME:
-                feature_dict[WORD_BOUNDARY_FEATURE_NAME] = choice([True, False])
+                feature_dict[WORD_BOUNDARY_FEATURE_NAME] = True
             elif random_feature == MORPHEME_BOUNDARY_FEATURE_NAME:
-                feature_dict[MORPHEME_BOUNDARY_FEATURE_NAME] = choice([True, False])
+                feature_dict[MORPHEME_BOUNDARY_FEATURE_NAME] = True
         else:
             random_value = random_feature.get_random_value()
             feature_dict[random_feature.name] = random_value
@@ -192,7 +192,18 @@ class FeatureBundle:
     def __getitem__(self, item):
         return self.feature_dict[item]
 
+    def __str__(self):
+        repr_dict = self._get_repr_dict()
+        return str(repr_dict)
+
     def __repr__(self):
+        repr_dict = self._get_repr_dict()
+        repr_dict_key_to_str = [(key, str(key)) for key in repr_dict]
+        sorted_keys = sorted(repr_dict_key_to_str, key=lambda x: x[1])
+        sorted_repr_dict = {key[1]: repr_dict[key[0]] for key in sorted_keys}
+        return str(sorted_repr_dict)
+
+    def _get_repr_dict(self):
         repr_dict = self.feature_dict.copy()
         if self.kleene:
             repr_dict.update({KLEENE_FEATURE_NAME: True})
@@ -200,7 +211,8 @@ class FeatureBundle:
             repr_dict.update({WORD_BOUNDARY_FEATURE_NAME: True})
         if self.morpheme_boundary:
             repr_dict.update({MORPHEME_BOUNDARY_FEATURE_NAME: True})
-        return str(repr_dict)
+        return repr_dict
+
 
 
 class FeatureBundleList:
@@ -250,6 +262,9 @@ class FeatureBundleList:
     def __str__(self):
         return str(self.feature_bundle_list)
 
+    def __repr__(self):
+        return repr(self.feature_bundle_list)
+
     def make_mutation(self):
         mutation_weights = [(self._add_feature_bundle, configurations["ADD_FEATURE_BUNDLE"]),
                             (self._remove_feature_bundle, configurations["REMOVE_FEATURE_BUNDLE"]),
@@ -259,22 +274,20 @@ class FeatureBundleList:
         return mutation_result
 
     def _add_feature_bundle(self):
-        if self.is_one_item_list and len(self.feature_bundle_list):
+        if self.is_one_item_list and len(self.feature_bundle_list) > 0:
             return False
-        elif not self.is_one_item_list and len(self.feature_bundle_list) == configurations[
-            "MAX_FEATURE_BUNDLE_IN_CONTEXT"]:
+        elif not self.is_one_item_list and len(self.feature_bundle_list) == configurations["MAX_FEATURE_BUNDLE_IN_CONTEXT"]:
             return False
         else:
-            position = randrange(len(self.feature_bundle_list) + 1)
-            if (self.role == 'right_context' and position == len(self.feature_bundle_list)) \
-                    or \
-                    (self.role == 'left_context' and position == 0):
-                allow_boundary = True
+            insert_position = randrange(len(self.feature_bundle_list) + 1)
+            if (self.role == 'right_context' or self.role == 'left_context') and (insert_position == 0 or insert_position == len(self.feature_bundle_list)):
+                is_boundary_position = True
             else:
-                allow_boundary = False
+                is_boundary_position = False
+
             random_feature_bundle = FeatureBundle.get_random_feature_bundle(role=self.role,
-                                                                            boundary_position=allow_boundary)
-            self.feature_bundle_list.insert(position, random_feature_bundle)
+                                                                            is_boundary_position=is_boundary_position)
+            self.feature_bundle_list.insert(insert_position, random_feature_bundle)
             return True
 
     def _remove_feature_bundle(self):
@@ -317,12 +330,11 @@ class FeatureBundleList:
 
             feature_bundles = []
             for i in range(num_bundles):
-                is_boundary_position = False
-                if role == 'left_context' and i == 0:
+                if (role == 'left_context' or role=='right_context') and (i == 0 or i == num_bundles-1):
                     is_boundary_position = True
-                elif role == 'right_context' and i == (num_bundles - 1):
-                    is_boundary_position = True
+                else:
+                    is_boundary_position = False
                 feature_bundle = FeatureBundle.get_random_feature_bundle(role=role,
-                                                                         boundary_position=is_boundary_position)
+                                                                         is_boundary_position=is_boundary_position)
                 feature_bundles.append(feature_bundle)
             return cls(feature_bundles, is_one_item_list, role)

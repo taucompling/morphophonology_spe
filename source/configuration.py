@@ -1,6 +1,7 @@
 from io import StringIO
 from copy import deepcopy
 
+
 class Singleton(type):
     _instances = {}
 
@@ -12,13 +13,23 @@ class Singleton(type):
             cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
         return cls._instances[cls]
 
+    def clear(cls):
+        try:
+            del cls._instances[cls]
+        except KeyError:
+            pass
+
 
 class ConfigurationError(Exception):
     pass
 
 
+_DEFAULT_VALUE = object()
+
+
 class Configuration(metaclass=Singleton):
     def __init__(self):
+        self.initial_configurations_dict = dict()
         self.configurations_dict = dict()
         self.simulation_data = list()
         self.simulation_number = None
@@ -36,6 +47,15 @@ class Configuration(metaclass=Singleton):
 
     def __setitem__(self, key, value):
         self.configurations_dict[key] = value
+
+    def get(self, key, default=_DEFAULT_VALUE):
+        try:
+            return self.configurations_dict[key]
+        except KeyError:
+            if default is _DEFAULT_VALUE:
+                raise
+            else:
+                return default
 
     def load_configuration_for_simulation(self, simulation):
         self.simulation_data = sorted(simulation.data)
@@ -61,29 +81,5 @@ class Configuration(metaclass=Singleton):
 
         return values_str_io.getvalue().strip()
 
-
-class PrefixDict:
-    def __init__(self, words):
-        words_by_prefix = {}  # {prefix: [words with this prefix]}
-        prefixes_by_word = {}  # {word: longest prefix in `words`}
-
-        for w_1 in range(len(words)):
-            for w_2 in range(len(words)):
-                if w_1 == w_2:
-                    continue
-                word_1 = words[w_1]
-                word_2 = words[w_2]
-                if word_2.startswith(word_1):
-                    words_by_prefix.setdefault(word_1, []).append(word_2)
-                    curr_prefix = prefixes_by_word.setdefault(word_2, word_1)
-                    if len(curr_prefix) < len(word_1):
-                        prefixes_by_word[word_2] = word_1
-
-        self.words_by_prefix = words_by_prefix
-        self.prefixes_by_word = prefixes_by_word
-
-    def get_prefix_for_word(self, word):
-        return self.prefixes_by_word.get(word, None)
-
-    def get_words_for_prefix(self, prefix):
-        return self.words_by_prefix.get(prefix, list())
+    def clear(self):
+        self.__init__()

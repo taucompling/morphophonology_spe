@@ -4,10 +4,18 @@ import time
 from datetime import timedelta
 from operator import attrgetter
 from random import randint
-
 import fst
 
 from segment_table import SegmentTable
+from configuration import Configuration
+
+
+configurations = Configuration()
+
+
+class DFATooLargeException(Exception):
+    pass
+
 
 
 def get_weighted_list(weighted_choices):
@@ -49,7 +57,7 @@ def get_transducer_outputs(transducer, limit=float("inf")):
         output = ""
         for arc in path:
             symbol = transducer_symbol_table.find(arc.olabel)
-            if symbol != u"\u03b5":
+            if symbol != fst.EPSILON:
                 output += symbol
         outputs.append(output)
         counter += 1
@@ -150,6 +158,15 @@ def timeit_best_of_N(method):
 
 def pickle_deepcopy(obj):
     return pickle.loads(pickle.dumps(obj))
+
+
+def deepcopy_keep_cached_transducers(hypothesis):
+    cached_hmm = hypothesis.grammar._cached_hmm_transducer
+    cached_rule_set = hypothesis.grammar._cached_rule_set_transducer
+    hypothesis_copy = pickle_deepcopy(hypothesis)
+    hypothesis_copy.grammar._cached_hmm_transducer = cached_hmm
+    hypothesis_copy.grammar._cached_rule_set_transducer = cached_rule_set
+    return hypothesis_copy
 
 
 def hypothesis_to_string(hypothesis):

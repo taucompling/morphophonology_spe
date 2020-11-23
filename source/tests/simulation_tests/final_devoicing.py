@@ -69,7 +69,7 @@ class T(MyTestCase):
 
     def get_energy(self, hmm, rule_set_list, case_name):
         grammar = Grammar(hmm, RuleSet(rule_set_list))
-        self.write_to_dot_to_file(grammar.get_nfa(), "grammar_nfa")
+        self.write_to_dot_file(grammar.get_nfa(), "grammar_nfa")
         hypothesis = Hypothesis(grammar, self.data)
         energy = hypothesis.get_energy()
         print("{}: {}".format(case_name, hypothesis.get_recent_energy_signature()))

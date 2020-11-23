@@ -1,6 +1,8 @@
-from math import ceil, log
-from copy import copy
+from math import log
 import numpy as np
+
+from uniform_encoding import UniformEncoding
+from feature_bundle import FeatureBundle
 from random import random, choice, randint, sample
 from configuration import Configuration
 from io import StringIO
@@ -11,9 +13,9 @@ from fst import EPSILON
 from segment_table import SegmentTable, MORPHEME_BOUNDARY, WORD_BOUNDARY
 from collections import namedtuple
 from util import get_weighted_list, pickle_deepcopy as deepcopy
-import ga_config
 
 configurations = Configuration()
+uniform_encoding = UniformEncoding()
 
 INITIAL_STATE = 'q0'
 FINAL_STATE = 'qf'
@@ -66,16 +68,8 @@ class HMM:
         # create states
         for hmm_state in self.emissions:
             for emission_index, emission in enumerate(self.emissions[hmm_state]):
-                if configurations["MORPHEME_BOUNDARY_FLAG"] or configurations["WORD_BOUNDARY_FLAG"]:
-                    if configurations["MORPHEME_BOUNDARY_FLAG"]:  # add extra state for boundary
-                        emission_states_list = ["{},{},{}".format(hmm_state, emission_index, segment_index)
-                                                for segment_index in range(len(emission))]
-                    else:  # word boundary
-                        emission_states_list = ["{},{},{}".format(hmm_state, emission_index, segment_index)
-                                                for segment_index in range(len(emission) - 1)]
-                else:  # nominal case
-                    emission_states_list = ["{},{},{}".format(hmm_state, emission_index, segment_index)
-                                            for segment_index in range(len(emission) - 1)]
+                emission_states_list = ["{},{},{}".format(hmm_state, emission_index, segment_index)
+                                        for segment_index in range(len(emission) - 1)]
 
                 list_of_transducer_states.extend(emission_states_list)
 
@@ -91,38 +85,40 @@ class HMM:
         for hmm_state1 in self.transitions:
             for hmm_state2 in self.transitions[hmm_state1]:
                 state1 = list_of_transducer_states.index(state_dict[hmm_state1].end_state)
+
                 if hmm_state2 != HMM_FINAL_STATE:
                     state2 = list_of_transducer_states.index(state_dict[hmm_state2].start_state)
-                    transducer.add_arc(state1, state2, EPSILON, EPSILON)
                 else:
-                    if configurations["WORD_BOUNDARY_FLAG"]:
-                        transducer.add_arc(state1, final_state, WORD_BOUNDARY, WORD_BOUNDARY)
-                    else:  # nominal case
-                        transducer.add_arc(state1, final_state, EPSILON, EPSILON)
+                    state2 = final_state
+
+                if configurations["MORPHEME_BOUNDARY_FLAG"]:
+                    if hmm_state1 != HMM_INITIAL_STATE:
+                        arc_label = MORPHEME_BOUNDARY
+                    else:
+                        arc_label = EPSILON
+
+                elif configurations["WORD_BOUNDARY_FLAG"]:
+                    if hmm_state2 == HMM_FINAL_STATE:
+                        arc_label = WORD_BOUNDARY
+                    else:
+                        arc_label = EPSILON
+
+                else:  # nominal case
+                    arc_label = EPSILON
+                transducer.add_arc(state1, state2, arc_label, arc_label)
 
         # emission arcs
         for hmm_state in self.emissions:
             start_state = state_dict[hmm_state].start_state
             end_state = state_dict[hmm_state].end_state
             for emission_index, emission in enumerate(self.emissions[hmm_state]):
-                if not configurations["MORPHEME_BOUNDARY_FLAG"]:
-                    string_states_list = [start_state] + ["{},{},{}".format(hmm_state, emission_index, segment_index)
-                                                          for segment_index in range(len(emission) - 1)] + [end_state]
-                    states_list = [list_of_transducer_states.index(state) for state in string_states_list]
+                string_states_list = [start_state] + ["{},{},{}".format(hmm_state, emission_index, segment_index)
+                                                      for segment_index in range(len(emission) - 1)] + [end_state]
+                states_list = [list_of_transducer_states.index(state) for state in string_states_list]
 
-                    for i in range(len(emission)):
-                        transducer.add_arc(states_list[i], states_list[i + 1], emission[i], emission[i])
-                else:
-                    string_states_list = [start_state] + ["{},{},{}".format(hmm_state, emission_index, segment_index)
-                                                          for segment_index in range(len(emission))] + [end_state]
-                    states_list = [list_of_transducer_states.index(state) for state in string_states_list]
-
-                    for i in range(len(emission)):
-                        transducer.add_arc(states_list[i], states_list[i + 1], emission[i], emission[i])
-                    i += 1
-                    transducer.add_arc(states_list[i], states_list[i + 1], MORPHEME_BOUNDARY, MORPHEME_BOUNDARY)
-
-        # dot(transducer, "transducer")
+                for i in range(len(emission)):
+                    transducer.add_arc(states_list[i], states_list[i + 1], emission[i], emission[i])
+        transducer = uniform_encoding.get_weighted_transducer(transducer)
         return transducer
 
     def _get_inner_states(self):
@@ -164,12 +160,11 @@ class HMM:
         encoding_length = 0
         if restrictions_on_alphabet:
             number_of_distinct_symbols = len(self.get_distinct_segments())
-            segment_symbol_length = ceil(log(number_of_distinct_symbols + 1, 2))
-            restriction_set_length = number_of_distinct_symbols * (
-                2 * segment_symbol_length)  # encode segment and delimiter
+            segment_symbol_length = uniform_encoding.log2(number_of_distinct_symbols + 1)
+            restriction_set_length = number_of_distinct_symbols * (2 * segment_symbol_length)  # encode segment and delimiter
             encoding_length = restriction_set_length
         states_list = self.get_states()
-        states_symbol_length = ceil(log(len(states_list) + 1, 2))  # + 1 for the delimiter
+        states_symbol_length = uniform_encoding.log2(len(states_list) + 1)  # + 1 for the delimiter
 
         state_symbols_in_transitions = 0
         total_num_of_emissions = 0
@@ -194,7 +189,7 @@ class HMM:
 
     def get_underspecified_encoding_length(self):
         states_list = self.get_states()
-        states_symbol_length = ceil(log(len(states_list) + 1, 2))  # + 1 for the delimiter
+        states_symbol_length = uniform_encoding.log2(len(states_list) + 1)  # + 1 for the delimiter
 
         state_symbols_in_transitions = 0
         total_num_of_emissions = 0
@@ -281,19 +276,19 @@ class HMM:
 
     @classmethod
     def crossover(cls, hmm_1, hmm_2):
-        num_crossovers = randint(1, ga_config.MAX_CROSSOVERS)
+        num_crossovers = randint(1, configurations["HMM_MAX_CROSSOVERS"])
         offspring_1, offspring_2 = hmm_1, hmm_2
         for _ in range(num_crossovers):
-            if ga_config.HMM_CROSSOVER_FUNCTION == 'emissions':
+            if configurations["HMM_CROSSOVER_METHOD"] == 'emissions':
                 offspring_1, offspring_2 = HMM.crossover_emissions_to_one_parent(offspring_1, offspring_2)
-            elif ga_config.HMM_CROSSOVER_FUNCTION == 'matrix':
+            elif configurations["HMM_CROSSOVER_METHOD"] == 'matrix':
                 offspring_1, offspring_2 = HMM.crossover_by_matrix(offspring_1, offspring_2)
-            elif ga_config.HMM_CROSSOVER_FUNCTION == 'subgraph':
+            elif configurations["HMM_CROSSOVER_METHOD"] == 'subgraph':
                 offspring_1, offspring_2 = HMM.crossover_subgraphs(offspring_1, offspring_2)
-            elif ga_config.HMM_CROSSOVER_FUNCTION == 'connected_component':
+            elif configurations["HMM_CROSSOVER_METHOD"] == 'connected_component':
                 offspring_1, offspring_2 = HMM.crossover_connected_components(offspring_1, offspring_2)
             else:
-                raise ValueError("Unknown HMM crossover {}".format(ga_config.HMM_CROSSOVER_FUNCTION))
+                raise ValueError(f"Unknown HMM crossover method: {configurations['HMM_CROSSOVER_METHOD']}")
         return offspring_1, offspring_2
 
     @classmethod
@@ -364,6 +359,7 @@ class HMM:
 
                 # Switch states emissions
                 if row > 0 and state_name_parent_1 != FINAL_STATE and state_name_parent_2 != FINAL_STATE:
+                    # TODO Maybe switch only some of the emissions?
                     offspring_emissions_1[state_name_parent_1] = parent_emissions_2[state_name_parent_2]
                     offspring_emissions_2[state_name_parent_2] = parent_emissions_1[state_name_parent_1]
 
@@ -533,7 +529,7 @@ class HMM:
         added_states = []
         source_states_to_target_names = {}
         for source_state in source_component_states:
-            state_new_name = target_hmm.add_state()
+            state_new_name = target_hmm._add_state()
             added_states.append(state_new_name)
             source_states_to_target_names[source_state] = state_new_name
 
@@ -569,7 +565,7 @@ class HMM:
     def _add_subgraph(source_hmm, target_hmm, source_states, target_states,
                       source_subgraph_entry_state, target_hmm_entry_arcs):
 
-        if ga_config.LIMIT_CROSSOVER_RESULT_NUM_OF_STATES:
+        if configurations["LIMIT_CROSSOVER_RESULT_HMM_NUM_OF_STATES"]:
             if len(target_hmm.inner_states) + 1 - len(target_states) + len(source_states) > configurations[
                 "MAX_NUM_OF_INNER_STATES"]:
                 return
@@ -584,7 +580,7 @@ class HMM:
             if source_state == FINAL_STATE:
                 continue
 
-            state_new_name = target_hmm.add_state(force=True)
+            state_new_name = target_hmm._add_state(force=True)
             added_states.append(state_new_name)
             source_states_to_target_names[source_state] = state_new_name
 
@@ -717,6 +713,7 @@ class HMM:
 
         mutation_weights = [
             ([self.combine_emissions, []], configurations["COMBINE_EMISSIONS"]),
+            ([self.move_emission, []], configurations["MOVE_EMISSION"]),
             ([self.merge_emissions, []], configurations["MERGE_EMISSIONS"]),
             ([self.merge_states, []], configurations["MERGE_STATES"]),
             ([self.split_state, []], configurations["SPLIT_STATES"]),
@@ -724,7 +721,7 @@ class HMM:
             ([self.clone_state, []], configurations["CLONE_STATE"]),
             ([self.clone_emission, []], configurations["CLONE_EMISSION"]),
             ([self.split_emission, []], configurations["SPLIT_EMISSION"]),
-            ([self.add_state, []], configurations["ADD_STATE"]),
+            ([self.add_new_state, []], configurations["ADD_STATE"]),
             ([self.remove_random_state, []], configurations["REMOVE_STATE"]),
             ([self.add_transition, []], configurations["ADD_TRANSITION"]),
             ([self.remove_transition, []], configurations["REMOVE_TRANSITION"]),
@@ -732,7 +729,8 @@ class HMM:
             ([self.remove_segment_from_emission, []], configurations["REMOVE_SEGMENT_FROM_EMISSION"]),
             ([self.change_segment_in_emission, [segments]], configurations["CHANGE_SEGMENT_IN_EMISSION"]),
             ([self.add_emission_to_state, [segments]], configurations["ADD_EMISSION_TO_STATE"]),
-            ([self.remove_emission_from_state, []], configurations["REMOVE_EMISSION_FROM_STATE"])
+            ([self.remove_emission_from_state, []], configurations["REMOVE_EMISSION_FROM_STATE"]),
+            ([self.add_segment_by_feature_bundle, []], configurations["ADD_SEGMENT_BY_FEATURE_BUNDLE"])
         ]
 
         if configurations["UNDERSPECIFICATION_FLAG"]:
@@ -765,33 +763,48 @@ class HMM:
         else:
             return False
 
+    def _merge_options(self):
+        """A very naive way to find the number of states to merge.
+        The returned array contains numbers between 2 and n, where each `i`
+        appears twice as much as `i + 1`.
+        """
+        mult = 1
+        options = []
+        for i in range(len(self.inner_states), 1, -1):
+            options += [i] * mult
+            mult *= 2
+        return options
+
     def merge_states(self):
         if len(self.inner_states) < 2:
             return False
 
-        state_1, state_2 = sample(self.inner_states, 2)
+        total_to_merge = choice(self._merge_options())
+
+        states_to_merge = sample(self.inner_states, total_to_merge)
 
         new_state = self._get_next_state()
         self.inner_states.append(new_state)
 
-        merged_emissions = list(set(self.emissions[state_1] + self.emissions[state_2]))
-        merged_outgoing_transitions = list(set(self.transitions[state_1] + self.transitions[state_2]))
+        merged_emissions = set()
+        merged_outgoing_transitions = set()
+        for state in states_to_merge:
+            merged_emissions.update(self.emissions[state])
+            merged_outgoing_transitions.update(self.transitions[state])
 
-        self.emissions[new_state] = merged_emissions
-        self.transitions[new_state] = merged_outgoing_transitions
+        self.emissions[new_state] = list(merged_emissions)
+        self.transitions[new_state] = list(merged_outgoing_transitions)
 
         for state in self.transitions:
             add_transition_to_new = False
-            if state_1 in self.transitions[state]:
-                self.transitions[state].remove(state_1)
-                add_transition_to_new = True
-            if state_2 in self.transitions[state]:
-                self.transitions[state].remove(state_2)
-                add_transition_to_new = True
+            for old_state in states_to_merge:
+                if old_state in self.transitions[state]:
+                    self.transitions[state].remove(old_state)
+                    add_transition_to_new = True
             if add_transition_to_new:
                 self.transitions[state].append(new_state)
 
-        self.remove_states([state_1, state_2])
+        self.remove_states(states_to_merge)
         return True
 
     def split_state(self):
@@ -855,13 +868,29 @@ class HMM:
         else:
             return False
 
+    def move_emission(self):
+        """ choose an emission, remove it from its state and add it to another state """
+        states_with_emissions = [s for s in self.inner_states if len(self.emissions[s]) > 0]
+        if len(states_with_emissions) <= 1:
+            return False
+
+        source_state = choice(states_with_emissions)
+        emission = choice(self.emissions[source_state])
+        target_state = choice(list(set(states_with_emissions) - set([source_state])))
+
+        if emission not in self.emissions[target_state] or ALLOW_DUPLICATE_EMISSIONS:
+            self.emissions[target_state].append(emission)
+            self.emissions[source_state].remove(emission)
+            return True
+        else:
+            return False
+
     def merge_emissions(self):
         """ pick first emission, add it to emission, delete the first emission.
             if first state is left empty, delete it entirely. """
         states_with_emissions = [s for s in self.inner_states if len(self.emissions[s]) > 0]
         if not states_with_emissions:
             return False
-
         source_state = choice(states_with_emissions)
         target_state = choice(states_with_emissions)
 
@@ -877,7 +906,6 @@ class HMM:
             return False
 
         combined_emission = target_emission + source_emission
-
         source_emissions.remove(source_emission)
         try:
             target_emissions.remove(target_emission)
@@ -912,37 +940,26 @@ class HMM:
             return False
 
     def split_emission(self):
-        """pick one emission - split it in random place, and move second part to an outgoing state.
-        if there are no outgoing states from state, create one and connect it to original state's outgoing states """
+        """pick one emission - split it in random place, add both parts to state."""
         states_with_emissions = [s for s in self.inner_states if len(self.get_emissions(s)) > 0]
         if not states_with_emissions:
             return False
-        from_state = choice(states_with_emissions)
-        state_emissions = self.get_emissions(from_state)
+        source_state = choice(states_with_emissions)
+        state_emissions = self.get_emissions(source_state)
         emissions_longer_than_1 = [e for e in state_emissions if len(e) > 1]
         if not emissions_longer_than_1:
             return False
-        emission = choice(emissions_longer_than_1)
-        emission_idx = state_emissions.index(emission)
-        split_point = randint(1, len(emission) - 1)
 
+        emission = choice(emissions_longer_than_1)
+        split_point = randint(1, len(emission) - 1)
         emission_part_1 = emission[:split_point]
         emission_part_2 = emission[split_point:]
 
-        state_emissions[emission_idx] = emission_part_1  # Replace original emission with first part of split
+        if ALLOW_DUPLICATE_EMISSIONS or emission_part_1 not in self.emissions[source_state]:
+            self.emissions[source_state].append(emission_part_1)
+        if ALLOW_DUPLICATE_EMISSIONS or emission_part_2 not in self.emissions[source_state]:
+            self.emissions[source_state].append(emission_part_2)
 
-        state_transitions = copy(self.get_transitions(from_state))
-        if FINAL_STATE in state_transitions:
-            state_transitions.remove(FINAL_STATE)
-        if not state_transitions:
-            to_state = self.add_state()
-            if not to_state:  # Can't add new state (reached maximum)
-                return False
-            self.transitions[to_state] = copy(self.get_transitions(from_state))
-            self.transitions[from_state].append(to_state)
-        else:
-            to_state = choice(state_transitions)
-        self.emissions[to_state].append(emission_part_2)
         return True
 
     def clone_emission(self):
@@ -959,7 +976,14 @@ class HMM:
         else:
             return False
 
-    def add_state(self, force=False):
+    def add_new_state(self):
+        new_state = self._add_state()
+        if new_state is not None:
+            return True
+        else:
+            return False
+
+    def _add_state(self, force=False):
         """adds empty state"""
         if force or len(self.inner_states) < configurations["MAX_NUM_OF_INNER_STATES"]:
             new_state = self._get_next_state()
@@ -1135,6 +1159,23 @@ class HMM:
         else:
             return False
 
+    def add_segment_by_feature_bundle(self):
+        """
+        - randomize a feature bundle
+        - expand the feature bundle to its segments
+        - select a random inner state
+        - find all emissions in state that end with these segments
+        - randomly select a new segment and add it to end of these emissions
+        """
+        random_feature_bundle = FeatureBundle.get_random_feature_bundle(role=None)
+        feature_bundle_segments = SegmentTable().get_segments_symbols_by_features(random_feature_bundle.feature_dict)
+        random_segment = SegmentTable().get_random_segment_symbol()
+        state = choice(self.inner_states)
+        for emission_idx, emission in enumerate(self.emissions[state]):
+            if emission[-1] in feature_bundle_segments:
+                new_emission = emission + random_segment
+                self.emissions[state][emission_idx] = new_emission
+
     def underspecify(self):
         """pick a state, pick an emission, pick a voiced segment - underspecify"""
         state = choice(self.inner_states)
@@ -1182,7 +1223,11 @@ class HMM:
         return u"states {}, transitions {}, emissions {}".format(self.inner_states, self.transitions, self.emissions)
 
     def __repr__(self):
-        return self.__str__()
+        # unambiguous representation for hashing - heavier than __str__()
+        sorted_states = sorted(self.inner_states)
+        sorted_transitions = {state: sorted(self.transitions[state]) for state in sorted_states}
+        sorted_emissions = {state: sorted(self.emissions[state]) for state in sorted_states}
+        return u"states {}, transitions {}, emissions {}".format(sorted_states, sorted_transitions, sorted_emissions)
 
     def get_log_lines(self):
         log_lines = list()
@@ -1224,12 +1269,12 @@ class HMM:
 
     @classmethod
     def get_random_hmm(cls, data=[]):
-        if ga_config.RANDOM_HMM_METHOD == 'simple':
+        if configurations["RANDOM_HMM_METHOD"] == 'simple':
             return cls.get_random_hmm_simple(data)
-        elif ga_config.RANDOM_HMM_METHOD == 'matrix':
+        elif configurations["RANDOM_HMM_METHOD"] == 'matrix':
             return cls.get_random_hmm_by_random_transition_matrix(data)
         else:
-            raise ValueError(ga_config.RANDOM_HMM_METHOD)
+            raise ValueError(configurations["RANDOM_HMM_METHOD"])
 
     @classmethod
     def get_random_hmm_simple(cls, data=[]):
@@ -1239,10 +1284,10 @@ class HMM:
         :param data: optional. list of words to use to generate emissions if HMM_RANDOM_EMISSIONS_BY_DATA = True.
         """
         r = np.random.rand()
-        if r < ga_config.DEFAULT_HMM_BY_RANDOM_PROBAB:
+        if r < configurations["DEFAULT_HMM_BY_RANDOM_PROBAB"]:
             return HMM.get_default_hmm()
 
-        elif r < ga_config.DEFAULT_HMM_BY_RANDOM_PROBAB + ga_config.EXPLICIT_HMM_BY_RANDOM_PROBAB:
+        elif r < configurations["DEFAULT_HMM_BY_RANDOM_PROBAB"] + configurations["EXPLICIT_HMM_BY_RANDOM_PROBAB"]:
             return HMM.get_explicit_hmm(data)
 
         segments = SegmentTable().get_segments_symbols(include_boundary_symbols=False)
@@ -1250,12 +1295,12 @@ class HMM:
         def get_random_emissions_from_data(q):
             # Get substring of data words as random emissions
             emissions = []
-            num_emissions = randint(0, ga_config.RANDOM_HMM_MAX_EMISSIONS_PER_STATE)
+            num_emissions = randint(0, configurations["RANDOM_HMM_MAX_EMISSIONS_PER_STATE"])
             if num_emissions == 0:
                 return [EPSILON]
             for i in range(num_emissions):
                 random_word = choice(data)
-                emission_length = min(randint(1, len(random_word)), ga_config.RANDOM_HMM_MAX_EMISSION_LENGTH)
+                emission_length = min(randint(1, len(random_word)), configurations["RANDOM_HMM_MAX_EMISSION_LENGTH"])
 
                 # If this is the first state, take substring from start of word
                 if q == 1:
@@ -1270,11 +1315,11 @@ class HMM:
         def get_random_emissions():
             # Get totally random emissions
             emissions = []
-            num_emissions = randint(0, ga_config.RANDOM_HMM_MAX_EMISSIONS_PER_STATE)
+            num_emissions = randint(0, configurations["RANDOM_HMM_MAX_EMISSIONS_PER_STATE"])
             if num_emissions == 0:
                 return [EPSILON]
             for _ in range(num_emissions):
-                emission_length = randint(1, ga_config.RANDOM_HMM_MAX_EMISSION_LENGTH)
+                emission_length = randint(1, configurations["RANDOM_HMM_MAX_EMISSION_LENGTH"])
                 emission = "".join([choice(segments) for _ in range(emission_length)])
                 emissions.append(emission)
             return emissions
@@ -1292,7 +1337,7 @@ class HMM:
             if from_state == INITIAL_STATE:
                 hmm_dict[from_state] = state_transitions  # No emissions from q0
             else:
-                if ga_config.HMM_RANDOM_EMISSIONS_BY_DATA:
+                if configurations["HMM_RANDOM_EMISSIONS_BY_DATA"]:
                     emissions = get_random_emissions_from_data(q_from)
                 else:
                     emissions = get_random_emissions()
@@ -1310,10 +1355,10 @@ class HMM:
         """
 
         r = np.random.rand()
-        if r < ga_config.DEFAULT_HMM_BY_RANDOM_PROBAB:
+        if r < configurations["DEFAULT_HMM_BY_RANDOM_PROBAB"]:
             return HMM.get_default_hmm()
 
-        elif r < ga_config.DEFAULT_HMM_BY_RANDOM_PROBAB + ga_config.EXPLICIT_HMM_BY_RANDOM_PROBAB:
+        elif r < configurations["DEFAULT_HMM_BY_RANDOM_PROBAB"] + configurations["EXPLICIT_HMM_BY_RANDOM_PROBAB"]:
             return HMM.get_explicit_hmm(data)
 
         segments = SegmentTable().get_segments_symbols(include_boundary_symbols=False)
@@ -1321,12 +1366,12 @@ class HMM:
         def get_random_emissions_from_data(q):
             # Get substring of data words as random emissions
             emissions = []
-            num_emissions = randint(0, ga_config.RANDOM_HMM_MAX_EMISSIONS_PER_STATE)
+            num_emissions = randint(0, configurations["RANDOM_HMM_MAX_EMISSIONS_PER_STATE"])
             if num_emissions == 0:
                 return [EPSILON]
             for i in range(num_emissions):
                 random_word = choice(data)
-                emission_length = min(randint(1, len(random_word)), ga_config.RANDOM_HMM_MAX_EMISSION_LENGTH)
+                emission_length = min(randint(1, len(random_word)), configurations["RANDOM_HMM_MAX_EMISSION_LENGTH"])
 
                 # If this is the first state, take substring from start of word
                 if q == 1:
@@ -1341,11 +1386,11 @@ class HMM:
         def get_random_emissions():
             # Get totally random emissions
             emissions = []
-            num_emissions = randint(0, ga_config.RANDOM_HMM_MAX_EMISSIONS_PER_STATE)
+            num_emissions = randint(0, configurations["RANDOM_HMM_MAX_EMISSIONS_PER_STATE"])
             if num_emissions == 0:
                 return [EPSILON]
             for _ in range(num_emissions):
-                emission_length = randint(1, ga_config.RANDOM_HMM_MAX_EMISSION_LENGTH)
+                emission_length = randint(1, configurations["RANDOM_HMM_MAX_EMISSION_LENGTH"])
                 emission = "".join([choice(segments) for _ in range(emission_length)])
                 emissions.append(emission)
             return emissions
@@ -1354,7 +1399,7 @@ class HMM:
 
         # Randomize transition matrix
         transition_matrix = np.random.rand(num_inner_states + 2, num_inner_states + 2)
-        transition_matrix = (transition_matrix < ga_config.TRANSITION_MATRIX_TRANSITION_PROBABILITY).astype(int)
+        transition_matrix = (transition_matrix < configurations["TRANSITION_MATRIX_TRANSITION_PROBABILITY"]).astype(int)
 
         # Backtrack from qf and make sure at least one path from q0 to qf goes through all states
         available_states = list(range(1, num_inner_states + 1))
@@ -1385,7 +1430,7 @@ class HMM:
             if from_state == INITIAL_STATE:
                 hmm_dict[from_state] = state_transitions  # No emissions from q0
             else:
-                if ga_config.HMM_RANDOM_EMISSIONS_BY_DATA:
+                if configurations["HMM_RANDOM_EMISSIONS_BY_DATA"]:
                     emissions = get_random_emissions_from_data(q_from)
                 else:
                     emissions = get_random_emissions()

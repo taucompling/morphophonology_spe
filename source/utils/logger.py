@@ -3,13 +3,14 @@ from collections import Counter
 import shutil
 import logging
 from logging import handlers
-from multiprocessing import Queue, Process
+from threading import Thread
+from multiprocessing import Queue
 from genericpath import exists
 from os import makedirs
 from os.path import split, abspath, join
 import numpy as np
 from configuration import Singleton
-from utils.environment import get_simulation_id, get_process_number
+from utils.environment import get_simulation_id, get_process_number, get_environment_name
 from utils.s3 import S3
 import ga_config
 
@@ -40,13 +41,13 @@ class MultiprocessLogger(metaclass=Singleton):
     def log_stats_record(self, record, island_number):
         raise NotImplementedError
 
-    def finalize_log(self):
+    def finalize_log(self, island_num):
         """ Implement in case log file needs to be dealt with when simulation ends (e.g before instance is killed) """
         raise NotImplementedError
 
     @classmethod
     def get_logger(cls):
-        environment_name = ga_config.LOGGER_ENVIRONMENT
+        environment_name = get_environment_name()
         if environment_name == 'aws':
             return AWSLogger()
         elif environment_name == 'azure':
@@ -59,7 +60,7 @@ class AWSLogger(MultiprocessLogger):
     def __init__(self):
         super().__init__()
         self.island_num = get_process_number()
-        self.file_logger = get_file_logger(self.island_num)
+        self.file_logger = get_file_logger()
         self.lines_in_buffer = 0
         self.island_name = get_island_name(self.island_num)
 
@@ -67,10 +68,8 @@ class AWSLogger(MultiprocessLogger):
         self.s3_logs_dir = S3.join_paths(self.simulation_id, '/logs')
         self.island_latest_record = {}
         self.island_records_in_buffer = Counter()
-        self.latest_record_s3_location = S3.join_paths(self.simulation_id, '/logs') + '{}_latest.json'.format(
-            self.island_name)
         self.log_s3_location = S3.join_paths(self.simulation_id, '/logs') + '{}.txt'.format(self.island_name)
-        self.log_local_location = get_local_log_file_location(self.island_num)
+        self.log_local_location = get_local_log_file_location()
 
     def info(self, s):
         self.log_and_buffer('info', s)
@@ -107,25 +106,22 @@ class AWSLogger(MultiprocessLogger):
         except:
             self.exception("Error sending latest record to S3")
 
-    def finalize_log(self):
-        self.upload_latest_record_to_s3(self.island_num)
-        self.upload_log_to_s3()
+    def finalize_log(self, island_num):
+        self.upload_latest_record_to_s3(island_num)
+        # self.upload_log_to_s3()
 
-    def log_and_buffer(self, type, s):
-        getattr(self.file_logger, type)(s)
+    def log_and_buffer(self, type_, s):
+        getattr(self.file_logger, type_)(s)
         self.lines_in_buffer += 1
         if self.lines_in_buffer == ga_config.UPLOAD_LOG_TO_S3_EVERY_N_LINES:
-            self.upload_log_to_s3()
+            # self.upload_log_to_s3()
             self.lines_in_buffer = 0
 
     def upload_log_to_s3(self):
-        log_file_name = self.get_log_file_name()
+        log_file_name = get_log_file_name()
         copied_log_location = join('/tmp/', log_file_name)
         shutil.copyfile(self.log_local_location, copied_log_location)
         self.s3.upload_file(self.log_s3_location, copied_log_location)
-
-    def get_log_file_name(self):
-        return get_log_file_name(self.island_num)
 
 
 class QueuedFileLogger(MultiprocessLogger):
@@ -136,9 +132,13 @@ class QueuedFileLogger(MultiprocessLogger):
         super().__init__()
         self.logger_queue = Queue()
         self.queue_logger = self.get_queued_logger(self.logger_queue)
-        self.queue_listener_process = Process(target=self.queued_logger_listener_process,
-                                              kwargs={'queue': self.logger_queue})
-        self.queue_listener_process.start()
+        self.queue_listener_thread = LogListenerThread(self.logger_queue)
+        self.queue_listener_thread.daemon = True
+        self.queue_listener_thread.start()
+        # self.queue_listener_process = Process(target=self.queued_logger_listener_process,
+        #                                       kwargs={'queue': self.logger_queue})
+        # self.queue_listener_process.daemon = True
+        # self.queue_listener_process.start()
 
     def info(self, s):
         self.queue_logger.info(s)
@@ -158,7 +158,7 @@ class QueuedFileLogger(MultiprocessLogger):
     def log_stats_record(self, record, island_number):
         pass
 
-    def finalize_log(self):
+    def finalize_log(self, island_num):
         # Nothing to do, file log is always written to
         pass
 
@@ -184,7 +184,21 @@ class QueuedFileLogger(MultiprocessLogger):
             logger.handle(record)
 
 
-# Shared methods for all logger classes
+class LogListenerThread(Thread):
+    def __init__(self, queue):
+        super().__init__()
+        self.queue = queue
+        logger = logging.getLogger('spe_logger_listener')
+        log_handlers = get_file_handlers()
+        for handler in log_handlers:
+            logger.addHandler(handler)
+        self.logger = logger
+
+    def run(self):
+        while True:
+            record = self.queue.get()
+            self.logger.handle(record)
+
 
 def get_file_logger(process_num=None):
     logger_name = 'spe_logger{}'.format('' if process_num is None else '.{}'.format(process_num))

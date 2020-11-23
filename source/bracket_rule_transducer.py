@@ -1,31 +1,39 @@
-from rule import DELETION, INSERTION, DEGENERATE, ASSIMILATION, NO_CONTEXT, BOTH_CONTEXTS, LEFT_CONTEXT_ONLY, \
-    RIGHT_CONTEXT_ONLY
-from segment_table import SegmentTable
 import fst
-from utils.cache import Cache
 from fst import EPSILON
-from tests.test_util import write_to_dot_to_file as dot
-from automata.pyfst_fado_interface import pyfst_from_dfa, pyfst_to_dfa
-from configuration import Configuration
-from multiprocessing import current_process
-configurations = Configuration()
-from util import safe_compose, chain_safe_compose, get_transducer_outputs
-from utils.environment import get_process_number
 from FAdo.reex import str2regexp as fado_str2regexp
 from FAdo.reex import ParseReg1
+
+from uniform_encoding import UniformEncoding
+from rule import DELETION, INSERTION, ASSIMILATION
+from segment_table import SegmentTable
+from tests.test_util import write_to_dot_file
+from utils.cache import Cache
+from automata.pyfst_fado_interface import pyfst_from_dfa, pyfst_to_dfa
+from configuration import Configuration
+from util import safe_compose, chain_safe_compose, get_transducer_outputs, DFATooLargeException
+from utils.environment import get_process_number
 from rule import get_context_regex
 from segment_table import LEFT_APPLICATION_BRACKET, LEFT_CENTER_BRACKET, LEFT_IDENTITY_BRACKET
 from segment_table import RIGHT_APPLICATION_BRACKET, RIGHT_CENTER_BRACKET, RIGHT_IDENTITY_BRACKET
+
 
 LEFT_BRACKETS = [LEFT_APPLICATION_BRACKET, LEFT_CENTER_BRACKET, LEFT_IDENTITY_BRACKET]
 RIGHT_BRACKETS = [RIGHT_APPLICATION_BRACKET, RIGHT_CENTER_BRACKET, RIGHT_IDENTITY_BRACKET]
 BRACKETS = RIGHT_BRACKETS + LEFT_BRACKETS
 
+configurations = Configuration()
+uniform_encoding = UniformEncoding()
 
-cache = Cache()
+cache = Cache.get_cache()
 right_context_dfas = dict()
 left_context_dfas = dict()
 rule_transducers = dict()
+
+
+def clear_module():
+    right_context_dfas.clear()
+    left_context_dfas.clear()
+    rule_transducers.clear()
 
 
 # Wrappers for FAdo.reex.ParseReg1 and str2regexp().
@@ -45,9 +53,55 @@ def str2regexp(s, parser=ParseReg1MultiProcess, no_table=1, sigma=None, strict=F
 
 
 class BracketRuleTransducer:
+    # These are all global for the simulation. They need to be initialized once.
+    M_SIGMA_STAR_DFA = None
+    SIGMA_STAR_DFA_FOR_LEFT_CONTEXT = None
+    SIGMA_STAR_DFA_FOR_RIGHT_CONTEXT = None
+    SIGMA_STAR_DFA_FOR_OBLIGATORY = None
+    LEFT_BRACKET_TRANSDUCER = None
+    RIGHT_BRACKET_TRANSDUCER = None
+
     def __init__(self, rule):
         self.__dict__.update(rule.__dict__)
         self.alphabet = set(SegmentTable().get_segments_symbols())
+
+    @property
+    def m_sigma_star_dfa(self):
+        if self.M_SIGMA_STAR_DFA is None:
+            m_sigma_star_regex = "({})*".format("+".join(self.alphabet))
+            self.M_SIGMA_STAR_DFA = get_dfa_from_regex(m_sigma_star_regex,
+                                                       sigma=self.alphabet)
+        return self.M_SIGMA_STAR_DFA
+
+    @property
+    def sigma_star_dfa_for_left_context(self):
+        if self.SIGMA_STAR_DFA_FOR_LEFT_CONTEXT is None:
+            self.SIGMA_STAR_DFA_FOR_LEFT_CONTEXT = get_ignore_dfa(self.alphabet | set(LEFT_BRACKETS), self.m_sigma_star_dfa, set(LEFT_BRACKETS))
+        return self.SIGMA_STAR_DFA_FOR_LEFT_CONTEXT
+
+    @property
+    def sigma_star_dfa_for_right_context(self):
+        if self.SIGMA_STAR_DFA_FOR_RIGHT_CONTEXT is None:
+            self.SIGMA_STAR_DFA_FOR_RIGHT_CONTEXT = get_ignore_dfa(self.alphabet | set(RIGHT_BRACKETS), self.m_sigma_star_dfa, set(RIGHT_BRACKETS))
+        return self.SIGMA_STAR_DFA_FOR_RIGHT_CONTEXT
+
+    @property
+    def sigma_star_dfa_for_obligatory(self):
+        if self.SIGMA_STAR_DFA_FOR_OBLIGATORY is None:
+            self.SIGMA_STAR_DFA_FOR_OBLIGATORY = get_ignore_dfa(self.alphabet | set(BRACKETS), self.m_sigma_star_dfa, set(BRACKETS))
+        return self.SIGMA_STAR_DFA_FOR_OBLIGATORY
+
+    @property
+    def left_bracket_transducer(self):
+        if self.LEFT_BRACKET_TRANSDUCER is None:
+            self.LEFT_BRACKET_TRANSDUCER = pyfst_from_dfa(get_dfa_from_regex(LEFT_APPLICATION_BRACKET).toDFA())
+        return self.LEFT_BRACKET_TRANSDUCER
+
+    @property
+    def right_bracket_transducer(self):
+        if self.RIGHT_BRACKET_TRANSDUCER is None:
+            self.RIGHT_BRACKET_TRANSDUCER = pyfst_from_dfa(get_dfa_from_regex(RIGHT_APPLICATION_BRACKET).toDFA())
+        return self.RIGHT_BRACKET_TRANSDUCER
 
     def _get_left_context_dfa(self):
         left_context_key = str(self.left_context_feature_bundle_list)
@@ -55,7 +109,7 @@ class BracketRuleTransducer:
             return left_context_dfas[left_context_key]
 
         alphabet = self.alphabet
-        sigma_star_dfa = sigma_star_dfa_for_left_context
+        sigma_star_dfa = self.sigma_star_dfa_for_left_context
         if self.left_context_feature_bundle_list:
             context_regex = get_context_regex(self.left_context_feature_bundle_list)
             if configurations["LENGTHENING_FLAG"]:
@@ -92,7 +146,7 @@ class BracketRuleTransducer:
             return right_context_dfas[right_context_key]
 
         alphabet = self.alphabet
-        sigma_star_dfa = sigma_star_dfa_for_right_context
+        sigma_star_dfa = self.sigma_star_dfa_for_right_context
 
         if self.right_context_feature_bundle_list:
             right_context_dfa = get_context_dfa(self.right_context_feature_bundle_list)
@@ -123,8 +177,12 @@ class BracketRuleTransducer:
     def get_replace_transducer(self):
         transducer_symbol_table = SegmentTable().transducer_symbol_table
         inner_replace_transducer = fst.Transducer(isyms=transducer_symbol_table, osyms=transducer_symbol_table)
+        identities = set()
         for segment1, segment2 in self.target_change_tuples_list:
             inner_replace_transducer.add_arc(0, 1, segment1, segment2)
+            if self._should_fix_transducer() and segment1 not in identities:
+                inner_replace_transducer.add_arc(0, 1, segment1, segment1)
+                identities.add(segment1)
         inner_replace_transducer[1].final = True
         inner_replace_transducer_ignore_brackets = [LEFT_CENTER_BRACKET, RIGHT_CENTER_BRACKET]
 
@@ -132,7 +190,7 @@ class BracketRuleTransducer:
             inner_replace_transducer.add_arc(0, 0, bracket, bracket)
             inner_replace_transducer.add_arc(1, 1, bracket, bracket)
 
-        opt_part = left_bracket_transducer + inner_replace_transducer + right_bracket_transducer
+        opt_part = self.left_bracket_transducer + inner_replace_transducer + self.right_bracket_transducer
         add_opt(opt_part)
 
         sigma_star_regex = "({})*".format("+".join(self.alphabet))
@@ -147,9 +205,34 @@ class BracketRuleTransducer:
         # dot(replace_transducer, "replace_transducer")
         return replace_transducer
 
+    def _should_fix_transducer(self):
+        """Returns True if we should use new FST building method: treating
+        optional rules as obligatory with an `a -> a` transition.
+        This method should be used only if rule is optional and has right
+        context.
+
+        The algorithm of fixing and weighting transducers is as follows:
+        ```
+        1. if should fix transducer:
+            a. fix replace transducer.
+            b. weight fixed replace transducer.
+        2. compose rule transducer (according to K&K).
+        3. if should not fix transducer:
+            a. weight rule transducer.
+        ```
+        See https://www.overleaf.com/project/5d4c20cb6761ad16d9285c27 for more
+        details.
+        TODO: This link leads to non-public overleaf project. We should link to
+        some pubuic version of "Likelihood-Preserving Weighted FSTs for
+        Morpho-Phonological Rules"
+        """
+        optional = not self.obligatory
+        has_right_context = len(self.right_context_feature_bundle_list) > 0
+        return optional and has_right_context
+
     def _obligatory_maker(self, middle_dfa, left_brackets, right_brackets):
         alphabet = self.alphabet
-        sigma_star_dfa = sigma_star_dfa_for_obligatory
+        sigma_star_dfa = self.sigma_star_dfa_for_obligatory
 
         left_brackets_regex = "({})".format("+".join(left_brackets))
         right_brackets_regex = "({})".format("+".join(right_brackets))
@@ -184,22 +267,23 @@ class BracketRuleTransducer:
                     segments.append(target)
                 segments_regex = "({})".format("+".join(segments))
 
-            middle_dfa = get_dfa_from_regex(segments_regex, sigma=alphabet)
-            middle_dfa = get_ignore_dfa(alphabet | set(BRACKETS), middle_dfa, set(BRACKETS))
+            middle_dfa = get_dfa_from_regex(segments_regex, sigma=self.alphabet)
+            middle_dfa = get_ignore_dfa(self.alphabet | set(BRACKETS), middle_dfa, set(BRACKETS))
 
         return self._obligatory_maker(middle_dfa, left_brackets, right_brackets)
 
     def get_left_to_right_application(self):
+        to_fix = self._should_fix_transducer()
         prologue_transducer = get_prologue_transducer()
-        if self.obligatory:
+        if self.obligatory or to_fix:
             obligatory_transducer = pyfst_from_dfa(
                 self._get_obligatory_dfa([LEFT_IDENTITY_BRACKET], [RIGHT_IDENTITY_BRACKET]))
             composed_transducer = safe_compose(prologue_transducer, obligatory_transducer)
         else:
             composed_transducer = prologue_transducer
-
         right_context_transducer = self._get_right_context_dfa()
         replace_transducer = self.get_replace_transducer()
+        replace_transducer = uniform_encoding.get_weighted_replace_transducer(replace_transducer)
         left_context_transducer = self._get_left_context_dfa()
         prologue_inverse_transducer = get_prologue_inverse_transducer()
 
@@ -222,12 +306,17 @@ class BracketRuleTransducer:
             composed_transducer = safe_compose(composed_transducer, JL_obligatory_transducer)
 
         composed_transducer = safe_compose(composed_transducer, prologue_inverse_transducer)
+        if not self.obligatory:  # obligatory rules should be weighted only in the replace level
+            if not to_fix:  # only non-right-context rules should be weighted this way
+                is_optional_insertion = self.transformation_type  # optional because of the outer `if`
+                composed_transducer = uniform_encoding.get_weighted_rule_transducer(composed_transducer, is_optional_insertion)
         return composed_transducer
 
     @staticmethod
     def clear_caching():
-        global rule_transducers
-        rule_transducers = dict()
+        rule_transducers.clear()
+        left_context_dfas.clear()
+        right_context_dfas.clear()
 
     def get_transducer(self):
         rule_key = str(self)
@@ -248,7 +337,6 @@ class BracketRuleTransducer:
                                                              self.left_context_feature_bundle_list,
                                                              self.right_context_feature_bundle_list,
                                                              self.obligatory)
-
 
 def get_prologue_transducer():
     alphabet = set(SegmentTable().get_segments_symbols())
@@ -294,6 +382,12 @@ def get_if_s_then_p_dfa(dfa1, dfa2):
 def get_p_iff_s_dfa(dfa1, dfa2):
     p_then_s = get_if_p_then_s_dfa(dfa1, dfa2)
     s_then_p = get_if_s_then_p_dfa(dfa1, dfa2)
+
+    if len(s_then_p.States) > configurations["DFAS_STATES_LIMIT"]:
+        raise DFATooLargeException("s_then_p exceeded states limit (): {}".format(configurations["DFAS_STATES_LIMIT"], len(s_then_p.States)))
+    if len(p_then_s.States) > configurations["DFAS_STATES_LIMIT"]:
+        raise DFATooLargeException("p_then_s exceeded states limit (): {}".format(configurations["DFAS_STATES_LIMIT"], len(p_then_s.States)))
+
     intersected = p_then_s & s_then_p
     return intersected
 
@@ -362,16 +456,3 @@ def get_sigma_transducer_for_intro(sigma):
         sigma_dfa = get_dfa_from_regex(sigma_regex, sigma=sigma)
         sigma_transducer_dict[sigma_key] = pyfst_from_dfa(sigma_dfa)
     return sigma_transducer_dict[sigma_key]
-
-
-alphabet = set(SegmentTable().get_segments_symbols())
-
-m_sigma_star_regex = "({})*".format("+".join(alphabet))
-m_sigma_star_dfa = get_dfa_from_regex(m_sigma_star_regex, sigma=alphabet)
-
-sigma_star_dfa_for_left_context = get_ignore_dfa(alphabet | set(LEFT_BRACKETS), m_sigma_star_dfa, set(LEFT_BRACKETS))
-sigma_star_dfa_for_right_context = get_ignore_dfa(alphabet | set(RIGHT_BRACKETS), m_sigma_star_dfa, set(RIGHT_BRACKETS))
-sigma_star_dfa_for_obligatory = get_ignore_dfa(alphabet | set(BRACKETS), m_sigma_star_dfa, set(BRACKETS))
-
-left_bracket_transducer = pyfst_from_dfa(get_dfa_from_regex(LEFT_APPLICATION_BRACKET).toDFA())
-right_bracket_transducer = pyfst_from_dfa(get_dfa_from_regex(RIGHT_APPLICATION_BRACKET).toDFA())

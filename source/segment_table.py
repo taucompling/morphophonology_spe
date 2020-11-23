@@ -1,5 +1,3 @@
-from math import ceil, log
-import codecs
 from configuration import Singleton
 from copy import deepcopy
 from random import choice
@@ -26,12 +24,19 @@ class SegmentTable(metaclass=Singleton):
         """
         :type segments: Iterable of Segment
         """
-        self.segments = set(segments)
+        self._segments = set(segments)
+        self._sorted_segments = None
         self.features = deepcopy(segments[0].features)
         self._update_segment_lookup_tables()
         self.transducer_symbol_table = self.get_transducer_symbol_table()
         self.segment_table_file_path = None
         self.number_of_feature_combinations = self.get_number_of_feature_combinations()
+
+    @property
+    def segments(self):
+        if not self._sorted_segments:
+            self._sorted_segments = sorted(self._segments, key=lambda s: s.symbol)
+        return self._sorted_segments
 
     def get_transducer_symbol_table(self):
         transducer_symbol_table = fst.SymbolTable()
@@ -78,16 +83,12 @@ class SegmentTable(metaclass=Singleton):
         """
         return self._feature_table
 
-    def get_segment_encoding_length(self):
-        num_of_bits = 2
-        return ceil(log(len(self.features), 2)) * num_of_bits
-
     def add(self, segment):
-        self.segments.add(segment)
+        self._segments.add(segment)
         self._update_segment_lookup_tables()
 
     def remove(self, segment):
-        self.segments.remove(segment)
+        self._segments.remove(segment)
         self._update_segment_lookup_tables()
 
     def _update_segment_lookup_tables(self):
@@ -116,7 +117,7 @@ class SegmentTable(metaclass=Singleton):
         elif morpheme_boundary:
             return [MORPHEME_BOUNDARY]
 
-        segments = self.segments.copy()
+        segments = self._segments.copy()
 
         # In case no feature mentioned + not boundary feature, this will return all segments
         for feature_value in features.items():
@@ -226,7 +227,7 @@ class Feature(object):
         return choice(self.values)
 
     def __repr__(self):
-        return "'" + self.name + "'"
+        return self.name
 
     def __eq__(self, other):
         return self.name == other.name
