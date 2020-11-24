@@ -1,6 +1,7 @@
 from math import log
 import numpy as np
 
+from tests.test_util import write_to_dot_file
 from uniform_encoding import UniformEncoding
 from feature_bundle import FeatureBundle
 from random import random, choice, randint, sample
@@ -119,6 +120,7 @@ class HMM:
                 for i in range(len(emission)):
                     transducer.add_arc(states_list[i], states_list[i + 1], emission[i], emission[i])
         transducer = uniform_encoding.get_weighted_transducer(transducer)
+        # write_to_dot_file(transducer, 'tt')
         return transducer
 
     def _get_inner_states(self):
@@ -1218,6 +1220,28 @@ class HMM:
         for _ in range(n):
             result.append(self.generate_emission())
         return result
+
+    def generate_all_emissions(self):
+        """this will only work with well structured hmm
+        (all inner states with emissions, no dead ends).
+        Will not go through self-loops.
+        """
+        results = set()
+        for state in self.transitions[INITIAL_STATE]:
+            self._inner_generate_all_emissions(state, '', results)
+        return results
+
+    def _inner_generate_all_emissions(self, curr_state, curr_result, results):
+        if curr_state == FINAL_STATE:
+            results.add(curr_result)
+        elif len(curr_result) > 10:
+            return
+        else:
+            for emission in self.emissions[curr_state]:
+                for new_state in self.transitions[curr_state]:
+                    if new_state == curr_state:
+                        continue
+                    self._inner_generate_all_emissions(new_state, curr_result + emission, results)
 
     def __str__(self):
         return u"states {}, transitions {}, emissions {}".format(self.inner_states, self.transitions, self.emissions)

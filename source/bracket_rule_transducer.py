@@ -273,9 +273,8 @@ class BracketRuleTransducer:
         return self._obligatory_maker(middle_dfa, left_brackets, right_brackets)
 
     def get_left_to_right_application(self):
-        to_fix = self._should_fix_transducer()
         prologue_transducer = get_prologue_transducer()
-        if self.obligatory or to_fix:
+        if self.obligatory or self._should_fix_transducer():
             obligatory_transducer = pyfst_from_dfa(
                 self._get_obligatory_dfa([LEFT_IDENTITY_BRACKET], [RIGHT_IDENTITY_BRACKET]))
             composed_transducer = safe_compose(prologue_transducer, obligatory_transducer)
@@ -283,7 +282,7 @@ class BracketRuleTransducer:
             composed_transducer = prologue_transducer
         right_context_transducer = self._get_right_context_dfa()
         replace_transducer = self.get_replace_transducer()
-        replace_transducer = uniform_encoding.get_weighted_replace_transducer(replace_transducer)
+        replace_transducer = uniform_encoding.get_weighted_replace_transducer(replace_transducer, self)
         left_context_transducer = self._get_left_context_dfa()
         prologue_inverse_transducer = get_prologue_inverse_transducer()
 
@@ -307,9 +306,8 @@ class BracketRuleTransducer:
 
         composed_transducer = safe_compose(composed_transducer, prologue_inverse_transducer)
         if not self.obligatory:  # obligatory rules should be weighted only in the replace level
-            if not to_fix:  # only non-right-context rules should be weighted this way
-                is_optional_insertion = self.transformation_type  # optional because of the outer `if`
-                composed_transducer = uniform_encoding.get_weighted_rule_transducer(composed_transducer, is_optional_insertion)
+            if not self._should_fix_transducer():  # only non-right-context rules should be weighted this way
+                composed_transducer = uniform_encoding.get_weighted_rule_transducer(composed_transducer, self)
         return composed_transducer
 
     @staticmethod
@@ -332,11 +330,12 @@ class BracketRuleTransducer:
         return ".tablereg_{}".format(get_process_number())
 
     def __repr__(self):
-        return u"{} --> {}  /  {}__{} obligatory: {}".format(self.target_feature_bundle_list,
-                                                             self.change_feature_bundle_list,
-                                                             self.left_context_feature_bundle_list,
-                                                             self.right_context_feature_bundle_list,
-                                                             self.obligatory)
+        return (f"{self.target_feature_bundle_list} --> "
+                f"{self.change_feature_bundle_list}  /  "
+                f"{self.left_context_feature_bundle_list}__"
+                f"{self.right_context_feature_bundle_list} "
+                f"obligatory: {self.obligatory} "
+                f"noise: {self.noise}")
 
 def get_prologue_transducer():
     alphabet = set(SegmentTable().get_segments_symbols())

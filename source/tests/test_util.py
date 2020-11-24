@@ -65,7 +65,7 @@ def get_hmm_from_hypothesis_string(s):
 def get_rule_set_from_hypothesis_string(s):
     from rule import Rule
     from rule_set import RuleSet
-    rule_regex = re.compile(r'\[(.*?)\]\s*-->\s*\[(.*?)\]\s*/\s*\[(.*?)\]__\[(.*?)\].*(True|False)')
+    rule_regex = re.compile(r'\[(.*?)\]\s*-->\s*\[(.*?)\]\s*/\s*\[(.*?)\]__\[(.*?)\].*(True|False).*(True|False)')
     rules_matches = rule_regex.findall(s)
     rule_set_list = []
 
@@ -75,7 +75,8 @@ def get_rule_set_from_hypothesis_string(s):
         left_context = match_groups[2]
         right_context = match_groups[3]
         obligatory = match_groups[4]
-        rule_json_str = f'[[{target}], [{change}], [{left_context}], [{right_context}], {obligatory}]'
+        noise = match_groups[5]
+        rule_json_str = f'[[{target}], [{change}], [{left_context}], [{right_context}], {obligatory}, {noise}]'
         rule_json_str = rule_json_str.replace("'", '"')
         rule_json_str = rule_json_str.replace("True", 'true')
         rule_json_str = rule_json_str.replace("False", 'false')

@@ -2,10 +2,11 @@ import pickle
 import random
 from deap import base
 from math import isinf
+
 from util import DFATooLargeException
 from hmm import HMM
 from grammar import Grammar
-from parser import nfa_parser_get_most_probable_parse
+from nfa_parser import nfa_parser_get_most_probable_parse
 from configuration import Configuration
 from uniform_encoding import UniformEncoding
 from rule_set import RuleSet
@@ -89,6 +90,7 @@ class Hypothesis:
         """ Use FST operators on grammar transducer to calculate encoding length """
         data_by_grammar_length = 0
         num_unparsed_words = 0
+        total_words = len(configurations.simulation_data)
 
         transducer_too_large = False
         try:
@@ -102,8 +104,8 @@ class Hypothesis:
             transducer_too_large = True
 
         if transducer_too_large:
-            num_unparsed_words = len(configurations.simulation_data)
-            data_by_grammar_length = float("INF")
+            num_unparsed_words = total_words
+            data_by_grammar_length = float("inf")
 
         else:
             if configurations["MINIMIZE_TRANSDUCER"]:
@@ -116,21 +118,38 @@ class Hypothesis:
             encoding_length_for_word = {}  # cache in case corpus contains duplicates
 
             for word in configurations.simulation_data:
-
-                if word in encoding_length_for_word:
-                    word_encoding_length = encoding_length_for_word[word]
-                else:
-                    word_encoding_length = uniform_encoding.get_shortest_encoding_length_fst(weighted_transducer, word)
-                    encoding_length_for_word[word] = word_encoding_length
-
-                if word_encoding_length == float("INF"):
+                enc_len, parsed = self._get_word_encoding_length(
+                    word,
+                    encoding_length_for_word,
+                    weighted_transducer,
+                )
+                if not parsed:
                     num_unparsed_words += 1
 
-                # print('{},{}'.format(word, word_encoding_length))
-                data_by_grammar_length += word_encoding_length
+                data_by_grammar_length += enc_len
 
         self.unparsed_words = num_unparsed_words
-        return data_by_grammar_length
+        if self.unparsed_words:
+            return float('inf')
+        else:
+            return data_by_grammar_length
+
+    def _get_word_encoding_length(self,
+                                  word,
+                                  encoding_length_for_word,
+                                  weighted_transducer,
+                                  ):
+        parsed = True
+        if word in encoding_length_for_word:
+            enc_len = encoding_length_for_word[word]
+        else:
+            enc_len = uniform_encoding.get_shortest_encoding_length_fst(weighted_transducer, word)
+            encoding_length_for_word[word] = enc_len
+
+        if enc_len == float("inf"):
+            parsed = False
+            enc_len = 0  # punishment is added in the end
+        return enc_len, parsed
 
     def get_neighbor(self):
         new_hypothesis = self.get_hypothesis_copy()

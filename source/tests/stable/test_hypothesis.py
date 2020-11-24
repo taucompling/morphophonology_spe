@@ -1,3 +1,4 @@
+from copy import deepcopy
 from math import ceil
 
 from hypothesis import Hypothesis
@@ -8,6 +9,89 @@ from rule import Rule
 from rule_set import RuleSet
 from util import log_hypothesis
 from fst import EPSILON
+
+
+class TestHypothesisBase(MyTestCase):
+
+    def get_target_hypo(self):
+        target_hmm = deepcopy(self.simulation.target_hmm)
+        target_rule_set = RuleSet.load_from_flat_list(self.simulation.target_tuple[1])
+        return Hypothesis(Grammar(target_hmm, target_rule_set))
+
+    def hypo_from_strings(self, hmm_str, rules_str):
+        final_hmm = self.parse_hmm(hmm_str)
+        final_rule_set = self.parse_rules(rules_str)
+        return Hypothesis(Grammar(final_hmm, final_rule_set))
+
+    def parse_hmm(self, hmm_str):
+        hmm = {}
+        for line in hmm_str.split('\n'):
+            striped = line.strip()
+            if not striped:
+                continue
+            key, value = striped.split(': ')
+            trans_emis = eval(value)
+            if not isinstance(trans_emis[0], list):
+                pass
+            else:
+                trans_emis = tuple(trans_emis)
+            hmm[key] = trans_emis
+        return hmm
+
+    def parse_rules(self, rules_str):
+        """Parse Hypos"""
+        rules = []
+        for line in rules_str.split('\n'):
+            if not line.startswith('['):
+                continue
+            r = line[:line.find('|')]
+            arrow = r.find('-->')
+            slash = r.find('/')
+            context = r.find('__')
+            obligatoric = r.find('obligatory')
+            noisec = r.find('noise')
+
+            target = eval(r[:arrow])
+            change = eval(r[arrow + 3: slash])
+            left_context = eval(r[slash + 1: context])
+            right_context = eval(r[context + 2: obligatoric])
+            obligatory = eval(r[obligatoric + len('obligatory:'):noisec])
+
+            rules.append([target, change, left_context, right_context, obligatory])
+        return self.rule_set_from_rules(rules)
+
+    def assert_less_no_infs(self, a, b, msg=None):
+        self.assertLess(a, float('inf'), msg="Unexpected inf (first arg)")
+        self.assertLess(b, float('inf'), msg="Unexpected inf (second arg)")
+        self.assertLess(a, b, msg)
+
+    def assert_equal_no_infs(self, first, second, msg=None):
+        self.assertLess(first, float('inf'), msg="Unexpected inf (first arg)")
+        self.assertLess(second, float('inf'), msg="Unexpected inf (second arg)")
+        self.assertEqual(first, second, msg)
+
+    def assert_greater_than_target(self, final_hmm_str, final_rule_str, fail=False):
+        final_hypo = self.hypo_from_strings(final_hmm_str, final_rule_str)
+        target_hypo = self.get_target_hypo()
+        if fail:
+            target_hypo.get_energy()
+            final_hypo.get_energy()
+            self.fail(
+                f'\n'
+                f'TARGET: {target_hypo.energy_signature}\n'
+                f'FINAL : {final_hypo.energy_signature}\n'
+                f'DIFF: {target_hypo.energy - final_hypo.energy}\n'
+                f'WHICH IS {100 * abs(target_hypo.energy - final_hypo.energy) / final_hypo.energy:.2f}% OF FINAL'
+            )
+
+        target_energy = target_hypo.get_energy()
+        final_energy = final_hypo.get_energy()
+
+        self.assert_less_no_infs(target_energy, final_energy)
+
+    def rule_set_from_rules(self, rules):
+        return RuleSet([Rule(*r) for r in rules])
+
 
 
 class TestHypothesis(MyTestCase):

@@ -4,6 +4,7 @@ from fst import TropicalWeight, linear_chain, EPSILON
 from math import ceil, log
 
 from configuration import Singleton
+from rule import INSERTION
 from segment_table import MORPHEME_BOUNDARY, WORD_BOUNDARY
 from configuration import Configuration
 
@@ -50,14 +51,18 @@ class UniformEncoding(metaclass=Singleton):
                 arc.weight = TropicalWeight(num_bits)
         return transducer
 
-    def get_weighted_replace_transducer(self, transducer):
-        return self._get_weighted_transducer(transducer, count_epsilons=False)
-
-    def get_weighted_rule_transducer(self, transducer, is_optional_insertion):
+    def get_weighted_replace_transducer(self, transducer, rule):
         return self._get_weighted_transducer(transducer,
-                                             count_epsilons=is_optional_insertion)
+                                             count_epsilons=False,
+                                             noise=rule.noise)
 
-    def _get_weighted_transducer(self, transducer, count_epsilons):
+    def get_weighted_rule_transducer(self, transducer, rule):
+        is_optional_insertion = not rule.obligatory and rule.transformation_type == INSERTION
+        return self._get_weighted_transducer(transducer,
+                                             count_epsilons=is_optional_insertion,
+                                             noise=rule.noise)
+
+    def _get_weighted_transducer(self, transducer, count_epsilons, noise=False):
         epsilon_ilabel = transducer.isyms[EPSILON]
         for state in transducer:
             arcs = defaultdict(int)
@@ -84,7 +89,12 @@ class UniformEncoding(metaclass=Singleton):
                     self.logarithms_cache[total_inputs] = self.log2(total_inputs)
                 # transitions with the same input are a non-deterministic choice
                 # the number of choices is reflected in the weight
-                arc.weight = TropicalWeight(self.logarithms_cache[total_inputs])
+                if not noise:
+                    arc.weight = TropicalWeight(self.log2(total_inputs))
+                # for noise rules: weight is applied only to arcs that represent
+                # noise application
+                elif arc.ilabel != arc.olabel:
+                    arc.weight = TropicalWeight(configurations["NOISE_WEIGHT"])
         return transducer
 
     def replace_morpheme_boundary_with_epsilons(self, transducer):
@@ -93,9 +103,11 @@ class UniformEncoding(metaclass=Singleton):
         )
 
     def get_shortest_encoding_length_fst(self, weighted_transducer, word):
-        if configurations["WORD_BOUNDARY_FLAG"]:
+        if configurations.get("WORD_BOUNDARY_FLAG", False):
             word += WORD_BOUNDARY
 
+        if word == 'kat':
+            print(word)
         acceptor = self.get_acceptor_for_word(word, syms=weighted_transducer.isyms)
         # composition result is: acceptor(weighted_transducer())
         composed = weighted_transducer.compose(acceptor)

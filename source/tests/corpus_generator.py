@@ -14,9 +14,8 @@ from hypothesis import Hypothesis
 from random import shuffle, sample
 from fst import EPSILON
 
+
 class CorpusGenerator(MyTestCase):
-    def setUp(self):
-        pass
 
     def get_all_outputs(self, hmm, *rules):
         rule_set = []
@@ -99,6 +98,43 @@ class CorpusGenerator(MyTestCase):
                    'q2': (['qf'], ['zook', 'gos', 'dod'])})
         assimilation_rule = Rule.load([[{"cons": "+"}], [{"voice": "-"}], [{"voice": "-"}], [], True])
         rule_set = RuleSet([assimilation_rule])
+
+        grammar = Grammar(hmm, rule_set)
+        all_outputs = grammar.get_all_outputs()
+        print(all_outputs)
+        print(len(all_outputs))
+
+    def test_dag_zook__ilm(self):
+        from simulations import dag_zook_ilm
+        self.initialise_simulation(dag_zook_ilm)
+        self.initialise_segment_table("dag_zook_segments_new.txt")
+        hmm = HMM({'q0': ['q1'],
+                   'q1': (['q2'],
+                          ['sak', 'dog', 'kat', 'daot', 'good', 'gkas', 'dkaz',
+                           'skod', 'gdaas', 'tok','ksoag', 'agtod', 'taso',
+                           'kaos', 'oktado', 'koad', 'osko', 'ozka', 'ag',
+                           'zook', 'saas', 'toot']),
+                   'q2': (['qf'],
+                          ['zoka', 'gat', 'dot', 'saat', 'tsk', 'gozka', 'oad',
+                           'ook', 'go', 'ktas', EPSILON])})
+        # assimilation_rule = Rule.load([[{"cons": "+"}], [{"voice": "-"}], [{"voice": "-"}], [], True])
+        # rule_set = RuleSet([assimilation_rule])
+
+        grammar = Grammar(hmm, RuleSet([]))
+        all_outputs = grammar.get_all_outputs()
+        print(all_outputs)
+        print(len(all_outputs))
+
+    def test_russian(self):
+        from simulations import russian_devoicing as simulation
+        self.initialise_simulation(simulation)
+        self.initialise_segment_table("russian_segment_table.txt")
+        hmm = simulation.target_hmm
+        devoice = Rule.load([[{"cons": "+"}], [{"voice": "-"}], [], [{'WB': True}], False])
+        rule_set = RuleSet([#Rule.load(simulation.xdel1),
+                            Rule.load(simulation.devoicing_rule),
+            Rule.load(simulation.xdel2)
+        ])
 
         grammar = Grammar(hmm, rule_set)
         all_outputs = grammar.get_all_outputs()
@@ -680,6 +716,96 @@ class CorpusGenerator(MyTestCase):
 
         # print stems
         print(sorted((list(set(" ".join([tuple_[1] for tuple_ in singnature_and_vaules_tuples]).split())))))
+
+    def test_german_final_devoicing(self):
+        from simulations import german_final_devoicing
+        configurations.load_configuration_for_simulation(german_final_devoicing)
+        self.initialise_segment_table("german_final_devoicing.txt")
+        hmm = HMM({'q0': ['q1', 'q2'],
+                   'q1': (['q2', 'q3'], ['aus']),
+                   'q2': (['q3'], ['kebab', 'hund', 'tab', 'tag', 'betsug',
+                                   'kan', 'tsang', 'aktsend', 'katz', 'umtsug',
+                                   'hetz', 'kotz',  'gantz', 'bang', 'knosb',
+                                   'begab', 'atvokad', 'adaptiv', 'aktiv',
+                                   'devod', 'defekd', 'deftig', 'fiktiv', 'tief'
+                                   ]),
+                   'q3': (['qf'], [EPSILON, 'e', 'ken', 's', 'en', 'esten']),
+                   })
+        rule_set = RuleSet([])
+        grammar = Grammar(hmm, rule_set)
+        all_outputs = grammar.get_all_outputs()
+        print(all_outputs)
+        print(len(all_outputs))
+
+    def test_german_final_devoicing__less_segments(self):
+        from simulations import german_final_devoicing_less_segments
+        configurations.load_configuration_for_simulation(german_final_devoicing_less_segments)
+        self.initialise_segment_table("german_final_devoicing_less_segments.txt")
+        hmm = HMM({'q0': ['q2'],
+                   'q2': (['q3'], ['tag', 'katz', 'kotz', 'tsog', 'gag', 'ego',
+                                   'zag', 'kaz', 'asked', 'keg', 'akd', 'tsokd',
+                                   'kozag', 'zektz', 'kokz', 'steg', 'gasd',
+                                   'gosd'
+                                   ]),
+                   'q3': (['qf'], [EPSILON, 'e', 's']),
+                   })
+        rule_set = RuleSet([])
+        grammar = Grammar(hmm, rule_set)
+        all_outputs = grammar.get_all_outputs()
+        print(all_outputs)
+        print(len(all_outputs))
+
+    def test_dag_zook_noise(self):
+        from simulations import dag_zook_noise
+        self.initialise_simulation(dag_zook_noise)
+
+        hmm = HMM(dag_zook_noise.target_hmm)
+        grammar = Grammar(hmm, RuleSet([Rule(*r) for r in dag_zook_noise.rule_set]))
+        all_outputs = grammar.get_all_outputs(with_noise=False)
+        noise_outputs = grammar.get_all_outputs(with_noise=True)
+        print(all_outputs)
+        print((len(all_outputs)))
+
+        print("Possible noise:")
+        print(set(noise_outputs) - set(all_outputs))
+
+
+    def test_german_final_devoicing__minimal(self):
+        from simulations import german_final_devoicing_minimal__with_noise
+        configurations.load_configuration_for_simulation(german_final_devoicing_minimal__with_noise)
+        self.initialise_segment_table("german_final_devoicing.txt")
+        hmm = HMM({'q0': ['q1'],
+                   'q1': (['q2'], ['kebab', 'hund', 'tab', 'tag', 'betsug',
+                                   'kan', 'tsang', 'aktsend', 'katz', 'umtsug',
+                                   'hetz', 'kotz',  'gantz', 'bang', 'knosb',
+                                   'begab', 'atvokad', 'aktiv',
+                                   'devod', 'deftig',
+                                   ]),
+                   'q2': (['qf'], [EPSILON, 'e', 'ken', 'en', 'esten']),
+                   })
+        rule = Rule(*[[{"nasal": "-", "cons": "+"}], [{"voice": "-"}], [], [{"WB": True}], True])
+        rule_set = RuleSet([rule])
+        grammar = Grammar(hmm, rule_set)
+        all_outputs = grammar.get_all_outputs()
+        print(all_outputs)
+        print(len(all_outputs))
+
+    def test_german_final_devoicing__mini_minimal(self):
+        from simulations import german_final_devoicing_minimal__with_noise
+        configurations.load_configuration_for_simulation(german_final_devoicing_minimal__with_noise)
+        self.initialise_segment_table("german_final_devoicing.txt")
+        hmm = HMM({'q0': ['q1'],
+                   'q1': (['q2'], ['kebab', 'hund', 'tab', 'tag', 'betsug',
+                                   'kan', 'tsang', 'aktsend', 'katz', 'umtsug',
+                                   ]),
+                   'q2': (['qf'], [EPSILON, 'e', 'ken', 'en', 'esten']),
+                   })
+        rule = Rule(*[[{"nasal": "-", "cons": "+"}], [{"voice": "-"}], [], [{"WB": True}], True])
+        rule_set = RuleSet([rule])
+        grammar = Grammar(hmm, rule_set)
+        all_outputs = grammar.get_all_outputs()
+        print(all_outputs)
+        print(len(all_outputs))
 
     def test_(self):
         vowels = ['a', 'i']
@@ -1280,4 +1406,34 @@ class CorpusGenerator(MyTestCase):
         target_rule_set = RuleSet.load_from_flat_list(self.simulation.target_tuple[1])
         grammar = Grammar(target_hmm, target_rule_set)
         all_outputs = grammar.get_all_outputs()
+        print(sorted(all_outputs))
+
+    def test_tak_soog__noise(self):
+        from simulations import dag_zook_noise_voicing
+        self.initialise_simulation(dag_zook_noise_voicing)
+        target_hmm = self.simulation.target_hmm
+        target_rule_set = RuleSet.load_from_flat_list(
+            self.simulation.target_tuple[1])
+        grammar = Grammar(target_hmm, target_rule_set)
+        all_outputs = grammar.get_all_outputs(with_noise=False)
+        print(sorted(all_outputs))
+
+    def test_dag_zook__noise(self):
+        from simulations import dag_zook_noise
+        self.initialise_simulation(dag_zook_noise)
+        target_hmm = self.simulation.target_hmm
+        target_rule_set = RuleSet.load_from_flat_list(
+            self.simulation.target_tuple[1])
+        grammar = Grammar(target_hmm, target_rule_set)
+        all_outputs = grammar.get_all_outputs(with_noise=False)
+        print(sorted(all_outputs))
+
+    def test_tag_soo__ilm(self):
+        from simulations import tag_soo_ilm_final_devoicing
+        self.initialise_simulation(tag_soo_ilm_final_devoicing)
+        target_hmm = self.simulation.target_hmm
+        target_rule_set = RuleSet.load_from_flat_list(
+            self.simulation.target_tuple[1])
+        grammar = Grammar(target_hmm, target_rule_set)
+        all_outputs = grammar.get_all_outputs(with_noise=False)
         print(sorted(all_outputs))

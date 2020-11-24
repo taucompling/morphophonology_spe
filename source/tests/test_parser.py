@@ -4,8 +4,8 @@ from hypothesis import Hypothesis
 from hmm import HMM, INITIAL_STATE, FINAL_STATE
 from tests.my_test_case import MyTestCase
 from segment_table import SegmentTable
-from parser import nfa_parser_get_all_parses
-from parser import nfa_parser_get_most_probable_parse as nfa_parser
+from nfa_parser import nfa_parser_get_all_parses
+from nfa_parser import nfa_parser_get_most_probable_parse as nfa_parser
 from uniform_encoding import get_shortest_encoding_length, get_encoding_length, get_weighted_transducer, get_shortest_encoding_length_fst
 from rule_set import RuleSet
 from rule import Rule

@@ -15,7 +15,7 @@ class TestRuleSet(MyTestCase):
     def test_load_from_json(self):
         self.initialise_segment_table("ab_segment_table.txt")
         rule_set = self.get_rule_set("abnese_rule_set.json")
-        self.assertEqual(str(rule_set), "[[] --> [{'cons': '-'}]  /  [{'cons': '+'}]__[{'cons': '+'}] obligatory: True]")
+        self.assertEqual(str(rule_set), "[[] --> [{'cons': '-'}]  /  [{'cons': '+'}]__[{'cons': '+'}] obligatory: True noise: False]")
 
     def test_make_mutation__remove_rule(self):
         self.configurations['UNDERSPECIFICATION_FLAG'] = 0

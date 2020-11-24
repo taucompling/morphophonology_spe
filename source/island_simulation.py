@@ -1,3 +1,5 @@
+import os
+
 import ga_config
 from collections import Counter
 from multiprocessing import Process, Queue
@@ -61,7 +63,9 @@ class GeneticAlgorithmIslandSimulation:
         return self.best_hypothesis
 
     def resume_simulation(self):
+        """Resume a stopped simulation"""
         self.processes = []
+        self.update_data_from_latest_island()
         for i in range(self.local_simulation_num_islands):
             island_idx = self.first_island_idx + i
 
@@ -76,6 +80,28 @@ class GeneticAlgorithmIslandSimulation:
             self.logger.info("Resumed {} at generation {}, pid: {}".format(island_process.name,
                                                                            last_generation,
                                                                            island_process.pid))
+
+    def update_data_from_latest_island(self):
+        """Ensure data used for resumed simulation matches stopped simulation.
+
+        Important for ILM simulations as data is overridden at the beginning of
+        each generation.
+
+        In non-ILM simulation this has no actual side effect.
+        """
+        island_dump = self.migration_coordinator.load_island(0)
+        data = island_dump.get('data')
+        if data is not None:
+            self.logger.info(f'Simulation data overridden by logs, using: {data}')
+            self.override_data(data)
+            return True
+        return False
+
+    def override_data(self, data):
+        setattr(self.simulation, 'data', data[:])
+        target_hmm = {'q0': ['q1'], 'q1': (['qf'], data[:])}
+        setattr(self.simulation, 'target_tuple', (target_hmm, []))
+        configurations.load_configuration_for_simulation(self.simulation)
 
     def get_result_queue(self):
         return Queue(maxsize=self.local_simulation_num_islands)
@@ -103,7 +129,7 @@ class GeneticAlgorithmIslandSimulation:
                     continue
 
                 process.join(timeout=1)
-                if process.exitcode is not None:  # process was successfully joined (ended naturally)
+                if self.is_process_finished(process):
                     process.terminate()
 
                     self.generations_completed_per_process[i] += self.generations_per_process
@@ -124,7 +150,7 @@ class GeneticAlgorithmIslandSimulation:
                 self.flush_queue()
 
     def flush_queue(self):
-        while self.result_queue.qsize():
+        while not self.result_queue.empty(): #self.result_queue.qsize():
             self.final_queue.append(self.result_queue.get(block=True))
 
     def collect_all_island_results(self):
@@ -133,7 +159,7 @@ class GeneticAlgorithmIslandSimulation:
         self.flush_queue()
         self.logger.info("Looking at {}/{} results".format(len(self.final_queue),
                                                            self.local_simulation_num_islands))
-        all_islands = [f'island_{i}' for i in range(self.local_simulation_num_islands)]
+        all_islands = [f'island_{i}' for i in range(self.first_island_idx, self.last_island_idx + 1)]
         for island, hypothesis in self.final_queue:
             self.logger.info('{} best hypothesis:'.format(island))
             all_islands.remove(island)
@@ -167,6 +193,20 @@ class GeneticAlgorithmIslandSimulation:
         p.daemon = True
         return p
 
+    def is_process_finished(self, process):
+        """ checks whether process was successfully joined (ended naturally).
+        This method should simply do:
+        >>> return process.exitcode is not None
+        but for some reason `.exitcode` remains `None` even though process
+        finishes. So `sign_of_death()` along with this method do validate
+        process finished. This is really ugly, yeah.
+        """
+        finished_signal = f'{process.name}_finished'
+        finished = os.path.exists(finished_signal)
+        if finished:
+            os.remove(finished_signal)
+        return finished
+
     @staticmethod
     def run_island(simulation, migration_coordinator, result_queue, initial_population, island_number,
                    simulation_total_islands, simulation_total_generations, max_generations, initial_generation):
@@ -183,3 +223,11 @@ class GeneticAlgorithmIslandSimulation:
         except:
             logger = Logger.get_logger()
             logger.exception("Error while running island {}".format(island_number))
+        finally:
+            # This should be removed. See comment in `is_finished(process)`
+            GeneticAlgorithmIslandSimulation.sign_of_death(island_number)
+
+    @staticmethod
+    def sign_of_death(island_number):
+        with open(f'{ga_config.PROCESS_NAME_PREFIX}_{island_number}_finished', 'w') as f:
+            f.write('')

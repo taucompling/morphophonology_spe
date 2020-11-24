@@ -84,7 +84,8 @@ class MigrationCoordinator:
         persisted_object = {
             'island_number': genetic_algorithm_instance.island_number,
             'generation': genetic_algorithm_instance.generation,
-            'population': genetic_algorithm_instance.population
+            'population': genetic_algorithm_instance.population,
+            'data': genetic_algorithm_instance.simulation.data,
         }
         self._dump_island(persisted_object, genetic_algorithm_instance.island_number)
 

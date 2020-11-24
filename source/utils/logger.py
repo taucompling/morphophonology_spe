@@ -45,6 +45,9 @@ class MultiprocessLogger(metaclass=Singleton):
         """ Implement in case log file needs to be dealt with when simulation ends (e.g before instance is killed) """
         raise NotImplementedError
 
+    def update_logger(self):
+        self.simulation_id = get_simulation_id()
+
     @classmethod
     def get_logger(cls):
         environment_name = get_environment_name()

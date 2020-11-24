@@ -163,9 +163,11 @@ def pickle_deepcopy(obj):
 def deepcopy_keep_cached_transducers(hypothesis):
     cached_hmm = hypothesis.grammar._cached_hmm_transducer
     cached_rule_set = hypothesis.grammar._cached_rule_set_transducer
+    cached_noie_rule_set = hypothesis.grammar._cached_noise_rule_set_transducer
     hypothesis_copy = pickle_deepcopy(hypothesis)
     hypothesis_copy.grammar._cached_hmm_transducer = cached_hmm
     hypothesis_copy.grammar._cached_rule_set_transducer = cached_rule_set
+    hypothesis_copy.grammar._cached_noise_rule_set_transducer = cached_noie_rule_set
     return hypothesis_copy
 
 
@@ -181,6 +183,9 @@ def hypothesis_to_string(hypothesis):
     log_lines.append("HMM:  {}".format(hypothesis.grammar.hmm))
     log_hmm(hypothesis.grammar.hmm, log_multiline)
     log_rule_set(hypothesis.grammar.rule_set, log_multiline)
+    log_multiline("Noise:")
+    log_multiline("======")
+    log_rule_set(hypothesis.grammar.noise_rule_set, log_multiline)
     log_lines.append(hypothesis.get_recent_energy_signature())
 
     log_str = '\n'.join(log_lines)
@@ -202,6 +207,8 @@ def log_hypothesis(hypothesis, logger_func=print):
     log_lines.append("HMM: {}".format(hypothesis.grammar.hmm))
     log_hmm(hypothesis.grammar.hmm, log_multiline)
     log_rule_set(hypothesis.grammar.rule_set, log_multiline)
+    log_multiline("Noise:")
+    log_rule_set(hypothesis.grammar.noise_rule_set, log_multiline)
     log_lines.append(hypothesis.get_recent_energy_signature())
 
     log_str = '\n'.join(log_lines)

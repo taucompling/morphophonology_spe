@@ -8,25 +8,15 @@ from hypothesis import Hypothesis
 from rule import Rule
 from rule_set import RuleSet
 from segment_table import SegmentTable, Feature
+from tests.stable.test_hypothesis import TestHypothesisBase
 from simulations import dag_zook_opacity, dag_zook_opacity_large, \
     french_two_rules, french_deletion_new, french_deletion_new_no_sab, \
-    turkish_vowel_harmony_new_weights, tk_aspiration, finnish_two_rules
-from tests.my_test_case import MyTestCase
+    turkish_vowel_harmony_new_weights, tk_aspiration, finnish_two_rules, \
+    dag_zook_noise, tag_soo_ilm_final_devoicing
 from tests.test_util import get_hypothesis_from_log_string
 
 
-class TestTransducerProblem(MyTestCase):
-
-    def assert_less_no_infs(self, a, b, msg=None):
-        self.assertLess(a, float('inf'), msg="Unexpected inf (first arg)")
-        self.assertLess(b, float('inf'), msg="Unexpected inf (second arg)")
-        self.assertLess(a, b, msg)
-
-    def assert_equal_no_infs(self, first, second, msg=None):
-        self.assertLess(first, float('inf'), msg="Unexpected inf (first arg)")
-        self.assertLess(second, float('inf'), msg="Unexpected inf (second arg)")
-        self.assertEqual(first, second, msg)
-
+class TestTransducerProblem(TestHypothesisBase):
     def test_original_problem(self):
         self.initialise_simulation(dag_zook_opacity_large)
         hmm_str = '''
@@ -299,121 +289,17 @@ q1: ['qf'], ['adorabsl', 'aktif', 'arab', 'arbr', 'brylabtl', 'byvabsl', 'dyr', 
 #         final_hypo = self.hypo_from_strings(hmm_str, rules_str)
 #         final_hypo.get_energy()
 
-    def hypo_from_strings(self, hmm_str, rules_str):
-        final_hmm = self.parse_hmm(hmm_str)
-        final_rule_set = self.parse_rules(rules_str)
-        return Hypothesis(Grammar(final_hmm, final_rule_set))
-
-    def get_target_hypo(self):
-        target_hmm = deepcopy(self.simulation.target_hmm)
-        target_rule_set = self.rule_set_from_rules(deepcopy(self.simulation.target_tuple[1]))
-        return Hypothesis(Grammar(target_hmm, target_rule_set))
-
-    def parse_hmm(self, hmm_str):
-        hmm = {}
-        for line in hmm_str.split('\n'):
-            striped = line.strip()
-            if not striped:
-                continue
-            key, value = striped.split(': ')
-            trans_emis = eval(value)
-            if not isinstance(trans_emis[0], list):
-                pass
-            else:
-                trans_emis = tuple(trans_emis)
-            hmm[key] = trans_emis
-        return hmm
-
-    def parse_rules(self, rules_str):
-        """Parse Hypos"""
-        rules = []
-        for line in rules_str.split('\n'):
-            if not line.startswith('['):
-                continue
-            r = line[:line.find('|')]
-            arrow = r.find('-->')
-            slash = r.find('/')
-            context = r.find('__')
-            obligatoric = r.find('obligatory')
-
-            target = eval(r[:arrow])
-            change = eval(r[arrow + 3: slash])
-            left_context = eval(r[slash + 1: context])
-            right_context = eval(r[context + 2: obligatoric])
-            obligatory = eval(r[obligatoric + len('obligatory:'):])
-
-            rules.append([target, change, left_context, right_context, obligatory])
-        return self.rule_set_from_rules(rules)
-
-    # def test_turkish(self):
-    #     self.initialise_simulation(turkish_vowel_harmony_new)
-    #     self.fail(self.get_target_hypo().get_energy())
-    #
-    # def test_catalan(self):
-    #     self.initialise_simulation(catalan_small_wb)
-    #     self.fail(self.get_target_hypo().get_energy())
-    #
-    # def test_dog_cat(self):
-    #     configurations = Configuration()
-    #     configurations.load_configurations_from_dict(english_devoicing.configurations_dict)
-    #     self.initialise_segment_table("plural_english_segment_table.txt")
-    #     hmm = {'q0': ['q1'],
-    #                'q1': (['q2', 'qf'], ['dog', 'kat']),
-    #                'q2': (['qf'], ['z'])}
-    #     rule = [[{"cons": "+"}], [{"voice": "-"}], [{"voice": "-"}], [], True]
-    #     g = Grammar(hmm, self.rule_set_from_rules([rule]))
-    #     write_to_dot_file(g.get_transducer(), 'dogcat')
-
-#     def test_new_turkish(self):
-#         self.initialise_simulation(turkish_vowel_harmony_new_weights)
-#         et = self.get_target_hypo().get_energy()
-#
-#         hmm_str = '''q0: ['q1', 'q2', 'q5']
-# q1: ['q4', 'q5'], ['et', 'gyn', 'kirpi', 'renk', 's1rt']
-# q2: ['q4'], ['ek', 'el', 'g0z', 'ip', 'k0j', 'k0k', 'kedi', 'kent']
-# q3: ['qf'], ['1', '1n', 'a', 'l1', 'l1k', 'lar', 's1z', 'sal', 'tan', 'ε']
-# q4: ['qf'], ['e', 'i', 'in', 'ler', 'li', 'lik', 'sel', 'siz', 'ten', 'ε']
-# q5: ['q3'], ['dal', 'j1l', 'josun', 'k1z', 'kurt', 'lan', 'sokak', 'son', 'tuz']
-# '''
-#
-#         final = self.hypo_from_strings(hmm_str, '')
-#         ef = final.get_energy()
-#         self.fail(
-#             f'\n'
-#             f'TARGET E: {et}\n'
-#             f'FINAL E : {ef}'
-#         )
-
-    # def test_(self):
-    #     self.initialise_simulation(catalan_small)
-    #
-    #     target = self.get_target_hypo()
-    #     write_to_dot_file(target.grammar.hmm, 'catalan_hmm')
-
-    # def test_catalan123(self):
-    #     self.initialise_simulation(catalan_small)
-    #     target = self.get_target_hypo()
-    #     target_hmm = {'q0': ['q1'],
-    #                   'q1': (['q2', 'qf'],
-    #                          ['plan', 'kuzin', 'silen', 'kaiman', 'katalan',
-    #                           'kalent', 'blank', 'plasa', 'kasa', 'kamp',
-    #                           'metal', 'kap', 'mal']),
-    #                   'q2': (['qf'], ['s', 'et', 'ik', 'a']),
-    #                   }
-    #
-    #     nasal_deletion = [[{"nasal": "+"}], [], [], [{"WB": True}], True]
-    #     cluster_simplification = [[{"cont": "-"}], [], [{"cons": "+"}],
-    #                               [{"WB": True}], True]
-    #
-    #     rule_set = self.rule_set_from_rules([nasal_deletion, cluster_simplification])
-    #
-    #     final = Hypothesis(Grammar(target_hmm, rule_set=rule_set))
-    #
-    #     self.fail(
-    #         f'\n'
-    #         f'TARGET: {target.get_energy()}\n'
-    #         f'FINAL : {final.get_energy()}'
-    #     )
+    def devoice(self, words):
+        for i, word in enumerate(words):
+            # if random.randint(1, 5) != 5:
+            #     continue  # chance of 5 to 1 of changing
+            c = word[-1]
+            segment = SegmentTable().get_segment_by_symbol(c)
+            new_features = deepcopy(segment.features)
+            new_features[Feature('voice', ('+', '-'))] = '-'
+            new_c = SegmentTable().get_segment_symbol_by_features(new_features)
+            if new_c:
+                words[i] = word[:-1] + new_c
 
     def test_finnish_two_rules(self):
         self.initialise_simulation(finnish_two_rules)
@@ -531,27 +417,15 @@ q5: ['qf'], ['i', 'li', 'lik', 'siz']
             final_hypo.get_energy()
         )
 
-    def assert_greater_than_target(self, final_hmm_str, final_rule_str, fail=False):
-        final_hypo = self.hypo_from_strings(final_hmm_str, final_rule_str)
-        target_hypo = self.get_target_hypo()
-        if fail:
-            target_hypo.get_energy()
-            final_hypo.get_energy()
-            self.fail(
-                f'\n'
-                f'TARGET: {target_hypo.energy_signature}\n'
-                f'FINAL : {final_hypo.energy_signature}\n'
-                f'DIFF: {target_hypo.energy - final_hypo.energy}\n'
-                f'WHICH IS {100 * abs(target_hypo.energy - final_hypo.energy) / final_hypo.energy:.2f}% OF FINAL'
-            )
-
-        target_energy = target_hypo.get_energy()
-        final_energy = final_hypo.get_energy()
-
-        self.assert_less_no_infs(target_energy, final_energy)
-
-    def rule_set_from_rules(self, rules):
-        return RuleSet([Rule(*r) for r in rules])
+    def devoicer(self, words):
+        for i, word in enumerate(words):
+            c = word[-1]
+            segment = SegmentTable().get_segment_by_symbol(c)
+            new_features = deepcopy(segment.features)
+            new_features[Feature('voice', ('+', '-'))] = '-'
+            new_c = SegmentTable().get_segment_symbol_by_features(new_features)
+            if new_c:
+                words[i] = word[:-1] + new_c
 
     def test_my_thigwsgs(self):
         self.initialise_simulation(tk_aspiration)
@@ -599,6 +473,19 @@ q5: ['q1', 'q3', 'qf'], ['ε']
         self.assert_equal_no_infs(self.get_target_hypo().get_energy(),
                                   some_hypo.get_energy())
 
+    def test_noise(self):
+        self.initialise_simulation(dag_zook_opacity)
+        self.configurations.simulation_data = ['dag', 'zook']
+        self.configurations['NOISE_RULE_SET'] = []
+        hmm_str = "q0: ['q1']\nq1: ['qf'], ['dag', 'zoog']"
+        hypo = self.hypo_from_strings(hmm_str, "")
+        self.assertEqual(hypo.get_energy(), float('inf'))
+
+        self.configurations['NOISE_RULE_SET'] = [[[{"cons": "+"}], [{"voice": "-"}], [], [], True]]
+        self.configurations['NOISE_WEIGHT'] = 100
+        hypo2 = self.hypo_from_strings(hmm_str, "")
+        self.assertLess(hypo2.get_energy(), float('inf'))
+
     def test_turkish__only_syll_is_the_correct_context(self):
         self.initialise_simulation(turkish_vowel_harmony_new_weights)
 
@@ -640,3 +527,16 @@ q5: ['q1', 'q3', 'qf'], ['ε']
                             unexpexted_context.append({f"hmm{h} rule {r}": {feat: val}})
 
         assert unexpexted_context == [], f"Unexpected kleene context for rule: {unexpexted_context}"
+
+    def test_dag_zook_hmm(self):
+        self.initialise_simulation(dag_zook_noise)
+        self.assert_greater_than_target(
+            final_hmm_str='''
+q0: ['q1']
+q1: ['q2', 'q3', 'qf'], ['dag', 'kad', 'dod', 'kod', 'gas', 'toz', 'ata', 'aso', 'daod', 'sog', 'saog', 'tad', 'taz', 'kaod', 'kaz', 'kak']
+q2: ['qf'], ['gos']
+q3: ['qf'], ['dos', 'zook']
+            ''',
+            final_rule_str="[{'cons': '+'}] --> [{'voice': '-'}] / []__[{'WB': True}] obligatory: True | blah",
+        )
+

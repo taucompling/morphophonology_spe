@@ -1,7 +1,7 @@
 from grammar import Grammar
 from hmm import HMM, INITIAL_STATE, FINAL_STATE
-from tests.my_test_case import MyTestCase
 
+from tests.my_test_case import MyTestCase
 
 class TestGrammar(MyTestCase):
     def test_plural_english_grammar(self):
@@ -29,3 +29,25 @@ class TestGrammar(MyTestCase):
         grammar = Grammar(hmm)
         self.assertCountEqual(['dog', 'kat', 'dogz', 'katz'],
                               grammar.get_all_outputs())
+
+    def test_get_all_outputs__with_noise(self):
+        grammar = self.mk_noisey_grammar()
+        self.assertCountEqual(['dog', 'tog', 'dok', 'tok',
+                               'kat',
+                               'dogz', 'togz', 'dokz', 'tokz', 'dogs', 'togs', 'doks', 'toks',
+                               'katz', 'kats'],
+                              grammar.get_all_outputs(with_noise=True))
+
+    def test_get_all_outputs__without_noise(self):
+        grammar = self.mk_noisey_grammar()
+        self.assertCountEqual(['dog', 'kat', 'dogz', 'katz'],
+                              grammar.get_all_outputs(with_noise=False))
+
+    def mk_noisey_grammar(self):
+        self.configurations["NOISE_RULE_SET"] = [
+            [[{"cons": "+"}], [{"voice": "-"}], [], []]]
+        self.initialise_segment_table("plural_english_segment_table.txt")
+        hmm = HMM({INITIAL_STATE: ['q1'],
+                   'q1': (['q2', FINAL_STATE], ['dog', 'kat']),
+                   'q2': ([FINAL_STATE], ['z'])})
+        return Grammar(hmm)

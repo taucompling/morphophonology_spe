@@ -1,4 +1,4 @@
-from random import choice, randint
+from random import choice
 from automata.parsing_nfa import ParsingNFA
 from uniform_encoding import UniformEncoding
 from util import get_weighted_list
@@ -25,30 +25,51 @@ class Grammar:
         if rule_set:
             self.rule_set = rule_set
         else:
-            self.rule_set = RuleSet()
+            self.rule_set = RuleSet(noise=False)
+
+        noises = configurations.get("NOISE_RULE_SET", [])
+        self.noise_rule_set = RuleSet.load_noise_rules_from_flat_list(noises)
 
         self._cached_hmm_transducer = None
         self._cached_rule_set_transducer = None
+        self._cached_noise_rule_set_transducer = None
 
     def generate_word(self):
         emission = self.hmm.generate_emission()
         return choice(self.rule_set.get_outputs_of_word(emission))
 
-    def get_transducer(self):
+    def generate_all_words(self):
+        # TODO: I think this also generates noised data. This should be fixed.
+        words = []
+        emissions = self.hmm.generate_all_emissions()
+        for emission in emissions:
+            words += self.rule_set.get_outputs_of_word(emission)
+        return words
+
+    def get_transducer(self, with_noise=True):
         hmm_transducer = self.get_hmm_transducer()
 
         if "case_name" in configurations.configurations_dict:
             case_name = configurations.configurations_dict["case_name"]
             dot(hmm_transducer, "{}_hmm_transducer".format(case_name))
         rules_set_transducer = self.get_rule_set_transducer()
-        if rules_set_transducer:
-            hmm_transducer.arc_sort_input()
-            rules_set_transducer.arc_sort_input()
-            composed_hmm_rules_transducer = hmm_transducer >> rules_set_transducer
+        if with_noise:
+            noise_rules_transducer = self.get_noise_rule_set_transducer()
         else:
-            composed_hmm_rules_transducer = hmm_transducer
+            noise_rules_transducer = None
 
-        return composed_hmm_rules_transducer
+        return self._compose_grammar_transducers(
+            hmm_transducer, rules_set_transducer, noise_rules_transducer
+        )
+
+    def _compose_grammar_transducers(self, first_transducer, *other_transducers):
+        composed_transducer = first_transducer
+        for transducer in other_transducers:
+            if transducer:
+                composed_transducer.arc_sort_input()
+                transducer.arc_sort_input()
+                composed_transducer = composed_transducer >> transducer
+        return composed_transducer
 
     def get_nfa(self):
         grammar_pyfst_transducer = self.get_transducer()
@@ -113,8 +134,8 @@ class Grammar:
             result.append(self.generate_word())
         return result
 
-    def get_all_outputs(self):
-        transducer = self.get_transducer()
+    def get_all_outputs(self, with_noise=True):
+        transducer = self.get_transducer(with_noise=with_noise)
         if configurations["MINIMIZE_TRANSDUCER"]:
             transducer = self.minimize_transducer(transducer)
 
@@ -137,7 +158,16 @@ class Grammar:
     def get_rule_set_transducer(self):
         if self._cached_rule_set_transducer is None:  # rule set transducer may be None
             self._cached_rule_set_transducer = self.rule_set.get_transducer()
+
         return self._cached_rule_set_transducer
+
+    def get_noise_rule_set_transducer(self):
+        if self._cached_noise_rule_set_transducer is None:
+            self._cached_noise_rule_set_transducer = self.noise_rule_set.get_transducer()
+        return self._cached_noise_rule_set_transducer
+
+    def get_log_lines(self):
+        return self.hmm.get_log_lines() + self.rule_set.get_log_lines()
 
     def invalidate_cached_hmm_transducer(self):
         self._cached_hmm_transducer = None
@@ -157,5 +187,5 @@ class Grammar:
         state = self.__dict__.copy()
         state['_cached_hmm_transducer'] = None
         state['_cached_rule_set_transducer'] = None
+        state['_cached_noise_rule_set_transducer'] = None
         return state
-

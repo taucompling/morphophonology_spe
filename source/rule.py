@@ -26,14 +26,20 @@ cache = Cache.get_cache()
 
 
 class Rule:
-    def __init__(self, target, change, left_context, right_context, obligatory):
+    def __init__(
+            self, target, change, left_context, right_context, obligatory, noise=False,
+    ):
         """
         :param target: raw FeatureBundleList
         :param change: raw FeatureBundleList
         :param left_context: raw FeatureBundleList
         :param right_context: raw FeatureBundleList
         :param obligatory: boolean
+        :param noise: boolean
         """
+        if obligatory and noise:
+            raise ValueError("Noise rules must be optional")
+
         self.target_feature_bundle_list = FeatureBundleList(target, is_one_item_list=True, role='target')
         self.change_feature_bundle_list = FeatureBundleList(change, is_one_item_list=True, role='change')
         self.left_context_feature_bundle_list = FeatureBundleList(left_context, is_one_item_list=False,
@@ -41,6 +47,7 @@ class Rule:
         self.right_context_feature_bundle_list = FeatureBundleList(right_context, is_one_item_list=False,
                                                                    role='right_context')
         self.obligatory = obligatory
+        self.noise = noise
         self.transducer_generated = False
         self.repr = None
 
@@ -231,26 +238,33 @@ class Rule:
 
     def __str__(self):
         if not self.repr:
-            return u"{} --> {}  /  {}__{} obligatory: {}".format(self.target_feature_bundle_list,
-                                                                 self.change_feature_bundle_list,
-                                                                 self.left_context_feature_bundle_list,
-                                                                 self.right_context_feature_bundle_list,
-                                                                 self.obligatory)
+            return (f"{self.target_feature_bundle_list} --> "
+                    f"{self.change_feature_bundle_list}  /  "
+                    f"{self.left_context_feature_bundle_list}__"
+                    f"{self.right_context_feature_bundle_list} "
+                    f"obligatory: {self.obligatory} "
+                    f"noise: {self.noise}")
         return self.repr
 
     def __repr__(self):
         if not self.repr:
-            self.repr = u"{} --> {}  /  {}__{} obligatory: {}".format(repr(self.target_feature_bundle_list),
-                                                                      repr(self.change_feature_bundle_list),
-                                                                      repr(self.left_context_feature_bundle_list),
-                                                                      repr(self.right_context_feature_bundle_list),
-                                                                      self.obligatory)
+            self.repr = (f"{repr(self.target_feature_bundle_list)} --> "
+                         f"{repr(self.change_feature_bundle_list)}  /  "
+                         f"{repr(self.left_context_feature_bundle_list)}__"
+                         f"{repr(self.right_context_feature_bundle_list)} "
+                         f"obligatory: {self.obligatory} "
+                         f"noise: {self.noise}"
+                         )
         return self.repr
 
     def get_construction_representation(self):
-        return u"{} --> {}  /  {}__{} obligatory: {}".format(self.target_feature_bundle_list, self.change_feature_bundle_list,
-                                                 self.left_context_feature_bundle_list,
-                                                 self.right_context_feature_bundle_list, self.obligatory)
+        return (f"{self.target_feature_bundle_list} --> " 
+                f"{self.change_feature_bundle_list}  /  " 
+                f"{self.left_context_feature_bundle_list}__"
+                f"{self.right_context_feature_bundle_list} "
+                f"obligatory: {self.obligatory} "
+                f"noise: {self.noise}"
+                )
 
     def get_segment_representation(self):
         if not hasattr(self, "transformation_type"):
@@ -270,8 +284,8 @@ class Rule:
             self.left_context_feature_bundle_list)  # List of list of possible segments for each feature bundle
         right_context = get_context_string_options(
             self.right_context_feature_bundle_list)  # List of list of possible segments for each feature bundle
-        return u"{} --> {}  /  {}__{} obligatory: {}".format(target, change, left_context, right_context,
-                                                             self.obligatory)
+        return (f"{target} --> {change}  /  {left_context}__{right_context} "
+                f"obligatory: {self.obligatory} noise: {self.noise}")
 
 
 def get_context_string_options(context_features):

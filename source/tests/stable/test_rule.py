@@ -95,3 +95,78 @@ class TestRule(MyTestCase):
         right_context_regex = get_context_regex(right_context_feature_bundle_list)
         print(left_context_regex)
         print(right_context_regex)
+
+    def test_noise_rule_transducer(self):
+        self.initialise_segment_table("abd_segment_table.txt")
+        rule = Rule([{"cons": "+"}], [{"labial": "+"}], [], [], obligatory=False, noise=True)
+        self.configurations["NOISE_WEIGHT"] = 10
+        draw_string = rule.get_transducer().draw().decode()
+
+        # verify only actual rule application gets weight
+        self.assertIn('"d:b/10"', draw_string)
+        self.assertNotIn('"d:b"', draw_string)
+        self.assertIn('"b:b"', draw_string)
+        self.assertNotIn('"b:b/"', draw_string)
+        self.assertIn('"d:d"', draw_string)
+        self.assertNotIn('"d:d/"', draw_string)
+        self.assertIn('"a:a"', draw_string)
+        self.assertNotIn('"a:a/"', draw_string)
+
+    def test_noise_rule_transducer__right_context(self):
+        self.initialise_segment_table("abd_segment_table.txt")
+        rule = Rule([{"cons": "+"}], [{"labial": "+"}], [], [{"labial": "+"}],
+                    obligatory=False, noise=True)
+        self.configurations["NOISE_WEIGHT"] = 10
+        draw_string = rule.get_transducer().draw().decode()
+        print(draw_string)
+
+        # verify only actual rule application gets weight
+        self.assertIn('"d:b/10"', draw_string)
+        self.assertNotIn('"d:b"', draw_string)
+        self.assertIn('"b:b"', draw_string)
+        self.assertNotIn('"b:b/"', draw_string)
+        self.assertIn('"d:d"', draw_string)
+        self.assertNotIn('"d:d/"', draw_string)
+        self.assertIn('"a:a"', draw_string)
+        self.assertNotIn('"a:a/"', draw_string)
+
+    def test_noise_rule_transducer__must_by_optional(self):
+        self.initialise_segment_table("abd_segment_table.txt")
+        with self.assertRaises(ValueError):
+            Rule([{"cons": "+"}], [{"labial": "+"}], [], [], obligatory=True, noise=True)
+
+    def test_optional_rule_transducer(self):
+        self.initialise_segment_table("abd_segment_table.txt")
+        rule = Rule([{"cons": "+"}], [{"labial": "+"}], [], [], obligatory=False)
+        draw_string = rule.get_transducer().draw().decode()
+        print(draw_string)
+
+        self.assertIn('"d:b/1"', draw_string)
+        self.assertNotIn('"d:b"', draw_string)
+
+        self.assertIn('"b:b"', draw_string)
+        self.assertNotIn('"b:b/"', draw_string)
+
+        self.assertIn('"d:d/1"', draw_string)
+        self.assertNotIn('"d:d"', draw_string)
+
+        self.assertIn('"a:a"', draw_string)
+        self.assertNotIn('"a:a/"', draw_string)
+
+    def test_optional_rule_transducer__right_context(self):
+        self.initialise_segment_table("abd_segment_table.txt")
+        rule = Rule([{"cons": "+"}], [{"labial": "+"}], [], [{"labial": "+"}], obligatory=False)
+        draw_string = rule.get_transducer().draw().decode()
+        print(draw_string)
+
+        self.assertIn('"d:b/1"', draw_string)
+        self.assertNotIn('"d:b"', draw_string)
+
+        self.assertIn('"b:b"', draw_string)
+        self.assertNotIn('"b:b/"', draw_string)
+
+        self.assertIn('"d:d/1"', draw_string)
+        self.assertIn('"d:d"', draw_string)
+
+        self.assertIn('"a:a"', draw_string)
+        self.assertNotIn('"a:a/"', draw_string)

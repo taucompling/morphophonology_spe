@@ -187,7 +187,7 @@ class TestBracketRuleTransducer(MyTestCase):
 
 
     def assertEqualsSets(self, first, second):
-        self.assertEquals(set(first), set(second))
+        self.assertEqual(set(first), set(second))
 
     def _rule_construction_helper(self, rule, word):
 

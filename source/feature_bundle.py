@@ -214,7 +214,6 @@ class FeatureBundle:
         return repr_dict
 
 
-
 class FeatureBundleList:
     def __init__(self, feature_bundle_list, is_one_item_list, role=None):
         self.role = role

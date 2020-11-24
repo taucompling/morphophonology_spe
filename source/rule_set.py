@@ -19,10 +19,16 @@ rule_set_transducers = dict()
 
 
 class RuleSet:
-    def __init__(self, rules=None):
+    def __init__(self, rules=None, noise=False):
         if not rules:
             rules = []
         self.rules = rules
+        for rule in self.rules:
+            if rule.noise != noise:
+                if noise:
+                    raise ValueError("Non-noise-rule in a noise-rule-set")
+                else:
+                    raise ValueError("Noise-rule in a non-noise-rule-set")
 
         number_of_features = len(SegmentTable().features)
         number_of_encoding_symbols = number_of_features + 5  # +5 for 3 delimiters (feature, bundle, # rule part), plus sign, and minus sign
@@ -82,6 +88,13 @@ class RuleSet:
         return cls(rules)
 
     @classmethod
+    def load_noise_rules_from_flat_list(cls, flat_rule_set_list):
+        rules = []
+        for flat_rule in flat_rule_set_list:
+            rules.append(Rule(*flat_rule[:4], obligatory=False, noise=True))
+        return cls(rules, noise=True)
+
+    @classmethod
     def crossover_pivot(cls, rules_set_1, rules_set_2):
         """
         1. Select pivot locus <i> in rule sets A and B
@@ -105,6 +118,7 @@ class RuleSet:
         rules_2 += [None] * (max_rules - num_rules_2)
 
         locus = randrange(max_rules)
+        print(locus)
 
         offspring_1_rules = []
         offspring_2_rules = []
@@ -145,7 +159,7 @@ class RuleSet:
                                rule_2.obligatory]
 
             uniform_crossover_loci = [randint(0, 1) for _ in range(len(rule_1_expanded))]
-            # print('rule pair uniform locus', uniform_crossover_loci)
+            print('rule pair uniform locus', uniform_crossover_loci)
 
             rules_expanded = [rule_1_expanded, rule_2_expanded]
             offspring_1_expanded = []
@@ -361,7 +375,7 @@ class RuleSet:
             dot(rule_set_transducer, "rule_set_transducer")
             word_rule_set_transducer = safe_compose(word_transducer, rule_set_transducer)
             word_rule_set_transducer.remove_epsilon()
-            dot(word_rule_set_transducer, "word_rule_set_transducer")
+            # dot(word_rule_set_transducer, "word_rule_set_transducer")
             if len(word_rule_set_transducer):
                 try:
                     outputs = get_transducer_outputs(word_rule_set_transducer)
