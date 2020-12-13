@@ -1,13 +1,13 @@
 from noise import FinalDevoicingNoise
 from tests.stable.test_hypothesis import MyTestCase
-from simulations import tag_soo_ilm_final_devoicing
+from simulations import dam_ka_ilm_final_devoicing
 
 
 class TestFinalDevoicingNoise(MyTestCase):
     def setUp(self):
         super().setUp()
         self.initialise_segment_table(
-            tag_soo_ilm_final_devoicing.segment_table_file_name
+            dam_ka_ilm_final_devoicing.segment_table_file_name
         )
 
     def test_noise_is_applied(self):
@@ -33,7 +33,7 @@ class TestFinalDevoicingNoise(MyTestCase):
 
     def test_noise_is_applied_only_for_obs(self):
         testee = FinalDevoicingNoise(noise_rate=100)
-        words = ["daz", "da"]
+        words = ["dam", "da"]
         testee.apply_noise(words)
 
-        self.assertCountEqual(words, ["daz", "da"])
+        self.assertCountEqual(words, ["dam", "da"])

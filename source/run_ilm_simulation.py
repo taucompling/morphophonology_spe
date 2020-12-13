@@ -154,10 +154,10 @@ for g in range(start, args.generations):
                        '--num-words', str(initial_data_len),
                        '--ilm-bottleneck', str(args.ilm_bottleneck),
                        ]
-    if g == args.resume_simulation:
-        simulation_args.append('--resume')
     if main_machine:
         simulation_args.extend(['--output', datafile])
+    if g == args.resume_simulation:
+        simulation_args.append('--resume')
     elif g != start:
         if main_machine:
             simulation_args.extend(['--input', datafile])

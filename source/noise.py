@@ -43,5 +43,5 @@ words. If the final segment of a words is not a voiced obstruent, does nothing.
 
     def _is_voiced_obstruent(self, segment):
         is_voiced = segment.features[Feature('voice', ('+', '-'))] == '+'
-        is_obstruent = segment.features[Feature('cont', ('+', '-'))] == '-'
+        is_obstruent = segment.features[Feature('son', ('+', '-'))] == '-'
         return is_voiced and is_obstruent

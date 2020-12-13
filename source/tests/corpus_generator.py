@@ -1437,3 +1437,25 @@ class CorpusGenerator(MyTestCase):
         grammar = Grammar(target_hmm, target_rule_set)
         all_outputs = grammar.get_all_outputs(with_noise=False)
         print(sorted(all_outputs))
+
+    def test_corpus_generator_ilm(self):
+        from simulations import dam_ka_ilm_final_devoicing
+        # with voicing
+        self.initialise_simulation(dam_ka_ilm_final_devoicing)
+        target_hmm = self.simulation.target_hmm
+        voicing_rule = [[{"son": "-"}], [{"voice": "+"}], [], [{"WB": True}], True]
+        target_rule_set = RuleSet.load_from_flat_list([voicing_rule])
+        grammar = Grammar(target_hmm, target_rule_set)
+        all_outputs = grammar.get_all_outputs(with_noise=False)
+        print(sorted(all_outputs))
+
+    def test_corpus_generator_ilm2(self):
+        from simulations import dam_ka_ilm_final_devoicing
+        # no voicing
+        self.initialise_simulation(dam_ka_ilm_final_devoicing)
+        target_hmm = self.simulation.target_hmm
+        grammar = Grammar(target_hmm, [])
+        all_outputs = grammar.get_all_outputs(with_noise=False)
+        print(sorted(all_outputs))
+
+
