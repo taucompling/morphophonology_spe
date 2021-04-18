@@ -12,6 +12,8 @@
 1. Build the project image 
 ` $ sudo docker build . -t tau-compling/morphophonology_spe:latest -f ./docker/Dockerfile `
 
+** Note: if build fails with a gcc error, try increasing the memory and/or swap size in Docker settings. **
+
 4. Start the Docker container
 `$ docker run -i -t -v ~/logs/:/root/morphophonology_spe/logs/ taucompling/morphophonology_spe:latest`
 
