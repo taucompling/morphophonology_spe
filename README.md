@@ -10,12 +10,15 @@
 ### 1. Using Docker
 
 1. Build the project image 
-` $ sudo docker build . -t tau-compling/morphophonology_spe:latest -f ./docker/Dockerfile `
+
+`$ sudo docker build . -t taucompling/morphophonology_spe:latest -f ./docker/Dockerfile`
 
 ** Note: if build fails with a gcc error, try increasing the memory and/or swap size in Docker settings. **
 
-4. Start the Docker container
+2. Start the Docker container
+
 `$ docker run -i -t -v ~/logs/:/root/morphophonology_spe/logs/ taucompling/morphophonology_spe:latest`
+
 
 Parameters explained: 
 * `-i` - Interactive shell
@@ -23,16 +26,21 @@ Parameters explained:
 * `-v` - Mount logs directory for persistence
 
 
+3. Activate the Python virtual environment
+
+`$ source ~/venv/bin/activate`
+
+
 ### 2. Native installation on Linux / MacOS
  
- #### 1. Create a Python virtual environment
+#### 1. Create a Python virtual environment
 You will need Python 3.6. 
 ```
 $ virtualenv -p $(which python3.6) venv
 $ source ./venv/bin/activate 
 ```
 
-#### 2. Install OpenFst from source + PyFST
+#### 2. Alternatively: locally install OpenFst from source + PyFST
 
 * Download OpenFst 1.6.0 from `http://www.openfst.org/twiki/pub/FST/FstDownload/openfst-1.6.0.tar.gz`
 * Unzip, untar:  `$ tar xzvf openfst-1.6.0.tar.gz`
@@ -88,14 +96,14 @@ Options:
 
 #### Example:
 
-` $ python run_genetic_algorithm.py -i french_deletion_test -c french_deletion -n 200`
+`$ python run_genetic_algorithm.py -i french_deletion_test -s french_deletion -n 200`
 
 #### Example for a cluster with 2 machines and 400 islands:
 * Machine #1 with 200 islands:
-` $ python run_genetic_algorithm.py -i french_deletion_test -c french_deletion -n 400 --first-island 0 --last-island 199`
+`$ python run_genetic_algorithm.py -i french_deletion_test -s french_deletion -n 400 --first-island 0 --last-island 199`
 
 * Machine #2 with another 200 islands: 
-` $ python run_genetic_algorithm.py -i french_deletion_test -c french_deletion -n 400 --first-island 200 --last-island 399`
+`$ python run_genetic_algorithm.py -i french_deletion_test -s french_deletion -n 400 --first-island 200 --last-island 399`
 
 
 ### Logs

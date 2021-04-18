@@ -17,7 +17,7 @@ RUN cd /tmp && wget http://www.openfst.org/twiki/pub/FST/FstDownload/openfst-1.6
 # Install virtualenv and Python packages
 RUN pip3 install virtualenv && cd ~ && virtualenv -p $(which python3) venv && source ./venv/bin/activate && export CFLAGS="-std=c++11" && pip install pyfst && unset CFLAGS
 RUN apt-get install -y libgmp3-dev pandoc && source ~/venv/bin/activate && pip install gmpy numpy pypandoc future scipy requests plotly boto3 && pip install deap && pip install redis
-RUN source ~/venv/bin/activate && pip install git+ssh://git@github.com:taucompling/fado-python3.git
+RUN source ~/venv/bin/activate && pip install git+https://github.com/taucompling/fado-python3.git
 
 # Get source
-RUN git clone git@github.com:taucompling/morphophonology_spe.git ~/morphophonology_spe && cd ~/morphophonology_spe
+RUN git clone https://github.com/taucompling/morphophonology_spe.git ~/morphophonology_spe && cd ~/morphophonology_spe
