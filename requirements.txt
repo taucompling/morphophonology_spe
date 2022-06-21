@@ -2,7 +2,7 @@ boto3==1.6.11
 deap==1.2.2
 future==0.16.0
 gmpy==1.17
-numpy==1.14.2
+numpy==1.22.0
 pandoc==1.0.0b2
 ply==3.10
 pyfst==0.2.3
