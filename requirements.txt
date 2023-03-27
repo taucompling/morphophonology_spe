@@ -8,7 +8,7 @@ ply==3.10
 pyfst==0.2.3
 pypandoc==1.4
 pytest
-redis==2.10.6
+redis==4.5.3
 requests==2.18.4
 scipy==0.19.1
 git+ssh://git@gitlab.com/taucompling/fado-python3.git@master
